@@ -124,7 +124,7 @@ Expose `/metrics` (Prometheus):
 ## Configuration (ENV)
 
 * ES_URL (e.g., <http://elasticsearch:9200>)
-* FLUSH_INTERVAL (default: 3s)
+* FLUSH_INTERVAL (default: 30s)
 * MAX_BATCH_SIZE (default: 5MB)
 * MAX_BUFFER_SIZE (default: 50MB)
 * PORT (default: 8080)

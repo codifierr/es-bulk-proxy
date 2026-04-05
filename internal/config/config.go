@@ -84,7 +84,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("elasticsearch.url", "http://localhost:9200")
 
 	// Buffer defaults
-	v.SetDefault("buffer.flushinterval", "3s")
+	v.SetDefault("buffer.flushinterval", "30s")
 	v.SetDefault("buffer.maxbatchsize", 5242880)   // 5MB
 	v.SetDefault("buffer.maxbuffersize", 52428800) // 50MB
 
