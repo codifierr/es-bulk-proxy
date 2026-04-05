@@ -1,0 +1,25 @@
+# Elasticsearch Proxy Configuration
+# This is an example configuration file. All values can be overridden by environment variables.
+
+server:
+  port: "8080"
+
+elasticsearch:
+  url: "http://es:9200"
+
+buffer:
+  # Time interval to flush buffer
+  flushinterval: "60s"
+
+  # Maximum batch size in bytes (5MB)
+  maxbatchsize: 5242880
+
+  # Maximum total buffer size in bytes (50MB)
+  maxbuffersize: 52428800
+
+retry:
+  # Number of retry attempts for failed bulk sends
+  attempts: 3
+
+  # Minimum backoff duration for retries
+  backoffmin: "100ms"
