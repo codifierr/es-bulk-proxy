@@ -564,7 +564,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 For issues and questions:
 
-- GitHub Issues: [github.com/codifierr/go-scratchpad/issues](https://github.com/codifierr/go-scratchpad/issues)
+- GitHub Issues: [https://github.com/codifierr/es-bulk-proxy/issues](https://github.com/codifierr/es-bulk-proxy/issues)
 
 ---
 
