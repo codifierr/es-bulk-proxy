@@ -178,8 +178,8 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "es_proxy_buffer_size_bytes",
-          "legendFormat": "Buffer Size",
+          "expr": "sum(es_proxy_buffer_size_bytes)",
+          "legendFormat": "Total Buffer Size",
           "range": true,
           "refId": "A"
         }
@@ -654,7 +654,7 @@
           },
           "editorMode": "code",
           "expr": "es_proxy_buffer_size_bytes",
-          "legendFormat": "Buffer Size",
+          "legendFormat": "{{index_path}}",
           "range": true,
           "refId": "A"
         }
@@ -935,13 +935,13 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "avg(es_proxy_buffer_size_bytes)",
-          "legendFormat": "Avg Buffer",
+          "expr": "avg by(index_path) (es_proxy_buffer_size_bytes)",
+          "legendFormat": "{{index_path}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Average Buffer Usage",
+      "title": "Buffer Usage By Index",
       "type": "timeseries"
     }
   ],

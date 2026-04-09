@@ -278,7 +278,7 @@ curl http://localhost:8080/metrics
   - `type="delete"` - Delete operations
 - `es_proxy_bulk_batches_total` - Number of bulk batches sent to Elasticsearch
 - `es_proxy_bulk_failures_total` - Number of failed bulk sends
-- `es_proxy_buffer_size_bytes` - Current buffer size in bytes
+- `es_proxy_buffer_size_bytes{index_path}` - Current buffer size in bytes per bulk index path
 - `es_proxy_latency_seconds{type, method}` - Request latency histogram by operation type and method
 
 ## 🎯 Use with Zenarmor
@@ -451,8 +451,8 @@ rate(es_proxy_bulk_batches_total[5m])
 # Error rate
 rate(es_proxy_bulk_failures_total[5m])
 
-# Buffer size
-es_proxy_buffer_size_bytes
+# Total buffer size
+sum(es_proxy_buffer_size_bytes)
 
 # Latency by operation type
 histogram_quantile(0.95, rate(es_proxy_latency_seconds_bucket[5m]))

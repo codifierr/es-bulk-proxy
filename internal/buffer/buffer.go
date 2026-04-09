@@ -117,7 +117,7 @@ func (ib *IndexBuffer) Add(data []byte) error {
 	ib.size += int64(len(data))
 	ib.requestsTotal++
 
-	ib.metrics.BufferSizeBytes.Set(float64(ib.size))
+	ib.metrics.BufferSizeBytes.WithLabelValues(ib.indexPath).Set(float64(ib.size))
 
 	// Flush if batch size exceeded
 	if ib.size >= ib.config.Buffer.MaxBatchSize {
@@ -170,7 +170,7 @@ func (ib *IndexBuffer) flush() {
 	ib.data = ib.data[:0]
 	ib.size = 0
 	ib.requestsTotal = 0
-	ib.metrics.BufferSizeBytes.Set(0)
+	ib.metrics.BufferSizeBytes.WithLabelValues(ib.indexPath).Set(0)
 	ib.mu.Unlock()
 
 	// Send with retry

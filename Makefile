@@ -1,6 +1,7 @@
 .PHONY: help build run test docker-build docker-run docker-compose-up docker-compose-down clean k8s-deploy k8s-delete deps lint precommit precommit-install
 
 # Variables
+IMAGE-PREFIX=ssingh3339
 BINARY_NAME=es-bulk-proxy
 IMAGE_NAME=es-bulk-proxy
 IMAGE_TAG=latest
@@ -38,7 +39,16 @@ lint: ## Run linters
 	pre-commit run --all-files
 
 docker-build: ## Build Docker image
-	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		--output "type=docker,push=false" \
+		--tag $(IMAGE-PREFIX)/$(IMAGE_NAME):$(IMAGE_TAG) .
+
+docker-publish: docker-build ## Build and publish Docker image
+	docker buildx build \
+		--platform linux/amd64,linux/arm64 \
+		--output "type=image,push=true" \
+		--tag $(IMAGE-PREFIX)/$(IMAGE_NAME):$(IMAGE_TAG) .
 
 docker-run: ## Run Docker container
 	docker run -d \
@@ -52,13 +62,13 @@ docker-stop: ## Stop Docker container
 	docker rm $(BINARY_NAME) || true
 
 docker-compose-up: ## Start services with Docker Compose
-	cd deployments && docker-compose up -d
+	cd deployments && docker compose up -d
 
 docker-compose-down: ## Stop services with Docker Compose
-	cd deployments && docker-compose down -v
+	cd deployments && docker compose down -v
 
 docker-compose-logs: ## View Docker Compose logs
-	cd deployments && docker-compose logs -f es-proxy
+	cd deployments && docker compose logs -f es-proxy
 
 integration-test: docker-compose-up ## Run integration tests
 	@chmod +x scripts/test.sh

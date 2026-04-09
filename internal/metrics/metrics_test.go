@@ -137,44 +137,46 @@ func TestMetrics_BulkFailuresTotal(t *testing.T) {
 
 func TestMetrics_BufferSizeBytes(t *testing.T) {
 	m := globalMetrics
+	bufferMetric := m.BufferSizeBytes.WithLabelValues("/_bulk")
 
 	// Initial value should be 0
-	initial := testutil.ToFloat64(m.BufferSizeBytes)
+	initial := testutil.ToFloat64(bufferMetric)
 	if initial != 0 {
 		t.Errorf("BufferSizeBytes initial value = %f, want 0", initial)
 	}
 
 	// Set gauge values
-	m.BufferSizeBytes.Set(1024)
-	if testutil.ToFloat64(m.BufferSizeBytes) != 1024 {
-		t.Errorf("BufferSizeBytes = %f, want 1024", testutil.ToFloat64(m.BufferSizeBytes))
+	bufferMetric.Set(1024)
+	if testutil.ToFloat64(bufferMetric) != 1024 {
+		t.Errorf("BufferSizeBytes = %f, want 1024", testutil.ToFloat64(bufferMetric))
 	}
 
-	m.BufferSizeBytes.Set(2048)
-	if testutil.ToFloat64(m.BufferSizeBytes) != 2048 {
-		t.Errorf("BufferSizeBytes = %f, want 2048", testutil.ToFloat64(m.BufferSizeBytes))
+	bufferMetric.Set(2048)
+	if testutil.ToFloat64(bufferMetric) != 2048 {
+		t.Errorf("BufferSizeBytes = %f, want 2048", testutil.ToFloat64(bufferMetric))
 	}
 
 	// Reset to 0
-	m.BufferSizeBytes.Set(0)
-	if testutil.ToFloat64(m.BufferSizeBytes) != 0 {
-		t.Errorf("BufferSizeBytes = %f, want 0", testutil.ToFloat64(m.BufferSizeBytes))
+	bufferMetric.Set(0)
+	if testutil.ToFloat64(bufferMetric) != 0 {
+		t.Errorf("BufferSizeBytes = %f, want 0", testutil.ToFloat64(bufferMetric))
 	}
 }
 
 func TestMetrics_BufferSizeBytes_Add(t *testing.T) {
 	m := globalMetrics
+	bufferMetric := m.BufferSizeBytes.WithLabelValues("/_bulk")
 
-	m.BufferSizeBytes.Set(100)
-	m.BufferSizeBytes.Add(50)
+	bufferMetric.Set(100)
+	bufferMetric.Add(50)
 
-	value := testutil.ToFloat64(m.BufferSizeBytes)
+	value := testutil.ToFloat64(bufferMetric)
 	if value != 150 {
 		t.Errorf("BufferSizeBytes = %f, want 150", value)
 	}
 
-	m.BufferSizeBytes.Sub(30)
-	value = testutil.ToFloat64(m.BufferSizeBytes)
+	bufferMetric.Sub(30)
+	value = testutil.ToFloat64(bufferMetric)
 	if value != 120 {
 		t.Errorf("BufferSizeBytes = %f, want 120", value)
 	}
@@ -233,7 +235,7 @@ func TestMetrics_ConcurrentAccess(t *testing.T) {
 			for j := 0; j < 100; j++ {
 				m.RequestsTotal.WithLabelValues("bulk", "POST").Inc()
 				m.BulkBatchesTotal.Inc()
-				m.BufferSizeBytes.Set(float64(j))
+				m.BufferSizeBytes.WithLabelValues("/_bulk").Set(float64(j))
 				m.ProxyLatency.WithLabelValues("bulk", "POST").Observe(0.001)
 			}
 			done <- true
@@ -285,7 +287,7 @@ func TestMetrics_MetricNames(t *testing.T) {
 		},
 		{
 			name:       "BufferSizeBytes",
-			metricFunc: func() prometheus.Collector { return m.BufferSizeBytes },
+			metricFunc: func() prometheus.Collector { return m.BufferSizeBytes.WithLabelValues("/_bulk") },
 			wantName:   "es_proxy_buffer_size_bytes",
 		},
 		{
@@ -361,10 +363,10 @@ func TestMetrics_ZeroValues(t *testing.T) {
 	m := globalMetrics
 
 	// Test that zero observations/increments work correctly
-	m.BufferSizeBytes.Set(0)
+	m.BufferSizeBytes.WithLabelValues("/_bulk").Set(0)
 	m.ProxyLatency.WithLabelValues("test", "TEST").Observe(0)
 
-	if testutil.ToFloat64(m.BufferSizeBytes) != 0 {
+	if testutil.ToFloat64(m.BufferSizeBytes.WithLabelValues("/_bulk")) != 0 {
 		t.Errorf("BufferSizeBytes should be 0")
 	}
 }

@@ -116,7 +116,7 @@ Default is last 15 minutes. Use the time picker (top right) to adjust.
    - `es_proxy_requests_total{type="bulk|proxy"}`
    - `es_proxy_bulk_batches_total`
    - `es_proxy_bulk_failures_total`
-   - `es_proxy_buffer_size_bytes`
+   - `es_proxy_buffer_size_bytes{index_path}`
    - `es_proxy_latency_seconds`
 
 ## 🔗 Dashboard Links
@@ -208,10 +208,10 @@ rate(es_proxy_latency_seconds_sum[1m]) / rate(es_proxy_latency_seconds_count[1m]
 sum by(type) (es_proxy_requests_total)
 ```
 
-**Buffer utilization percentage:**
+**Total buffer utilization percentage:**
 
 ```promql
-(es_proxy_buffer_size_bytes / 52428800) * 100
+(sum(es_proxy_buffer_size_bytes) / 52428800) * 100
 ```
 
 ## 📝 Notes
@@ -231,7 +231,7 @@ Create alerts for critical metrics:
    - Condition: Rate > 0 for 5 minutes
 
 2. **Buffer Nearly Full:**
-   - Metric: `es_proxy_buffer_size_bytes`
+   - Metric: `sum(es_proxy_buffer_size_bytes)`
    - Condition: > 45 MB (90% of max)
 
 3. **High Latency:**

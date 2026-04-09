@@ -10,7 +10,7 @@ type Metrics struct {
 	RequestsTotal     *prometheus.CounterVec
 	BulkBatchesTotal  prometheus.Counter
 	BulkFailuresTotal prometheus.Counter
-	BufferSizeBytes   prometheus.Gauge
+	BufferSizeBytes   *prometheus.GaugeVec
 	ProxyLatency      *prometheus.HistogramVec
 }
 
@@ -36,11 +36,12 @@ func New() *Metrics {
 				Help: "Total number of bulk batch send failures",
 			},
 		),
-		BufferSizeBytes: promauto.NewGauge(
+		BufferSizeBytes: promauto.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "es_proxy_buffer_size_bytes",
-				Help: "Current buffer size in bytes",
+				Help: "Current buffer size in bytes by bulk index path",
 			},
+			[]string{"index_path"},
 		),
 		ProxyLatency: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
