@@ -285,17 +285,105 @@ func TestLoad_ZeroValues(t *testing.T) {
 	os.Clearenv()
 	_ = os.Setenv("MAX_BATCH_SIZE", "0")
 
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() failed: %v", err)
-	}
-
-	// Zero values should be loaded as-is (validation is separate concern)
-	if cfg.Buffer.MaxBatchSize != 0 {
-		t.Errorf("Buffer.MaxBatchSize = %d, want 0", cfg.Buffer.MaxBatchSize)
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should fail when MAX_BATCH_SIZE is 0")
 	}
 
 	os.Clearenv()
+}
+
+func TestLoad_InvalidURL(t *testing.T) {
+	os.Clearenv()
+	_ = os.Setenv("ES_URL", "://bad-url")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should fail with invalid ES_URL")
+	}
+
+	os.Clearenv()
+}
+
+func TestLoad_MaxBatchSizeExceedsBuffer(t *testing.T) {
+	os.Clearenv()
+	_ = os.Setenv("MAX_BATCH_SIZE", "1024")
+	_ = os.Setenv("MAX_BUFFER_SIZE", "512")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should fail when MAX_BATCH_SIZE exceeds MAX_BUFFER_SIZE")
+	}
+
+	os.Clearenv()
+}
+
+func TestConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     Config
+		wantErr bool
+	}{
+		{
+			name: "valid config",
+			cfg: Config{
+				Server:        ServerConfig{Port: "8080"},
+				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200"},
+				Buffer: BufferConfig{
+					FlushInterval: 30 * time.Second,
+					MaxBatchSize:  1024,
+					MaxBufferSize: 2048,
+				},
+				Retry: RetryConfig{
+					Attempts:   3,
+					BackoffMin: 100 * time.Millisecond,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty port",
+			cfg: Config{
+				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200"},
+				Buffer: BufferConfig{
+					FlushInterval: 30 * time.Second,
+					MaxBatchSize:  1024,
+					MaxBufferSize: 2048,
+				},
+				Retry: RetryConfig{
+					Attempts:   3,
+					BackoffMin: 100 * time.Millisecond,
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "invalid retry backoff",
+			cfg: Config{
+				Server:        ServerConfig{Port: "8080"},
+				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200"},
+				Buffer: BufferConfig{
+					FlushInterval: 30 * time.Second,
+					MaxBatchSize:  1024,
+					MaxBufferSize: 2048,
+				},
+				Retry: RetryConfig{
+					Attempts:   3,
+					BackoffMin: 0,
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func TestServerConfig(t *testing.T) {
