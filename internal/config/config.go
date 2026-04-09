@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"log"
+	"net/url"
 	"time"
 
 	"github.com/spf13/viper"
@@ -72,7 +72,48 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
 	return &cfg, nil
+}
+
+// Validate checks that configuration values are internally consistent.
+func (c *Config) Validate() error {
+	if c.Server.Port == "" {
+		return fmt.Errorf("server.port must not be empty")
+	}
+
+	if _, err := url.ParseRequestURI(c.Elasticsearch.URL); err != nil {
+		return fmt.Errorf("elasticsearch.url must be a valid URL: %w", err)
+	}
+
+	if c.Buffer.FlushInterval <= 0 {
+		return fmt.Errorf("buffer.flushinterval must be greater than 0")
+	}
+
+	if c.Buffer.MaxBatchSize <= 0 {
+		return fmt.Errorf("buffer.maxbatchsize must be greater than 0")
+	}
+
+	if c.Buffer.MaxBufferSize <= 0 {
+		return fmt.Errorf("buffer.maxbuffersize must be greater than 0")
+	}
+
+	if c.Buffer.MaxBatchSize > c.Buffer.MaxBufferSize {
+		return fmt.Errorf("buffer.maxbatchsize must be less than or equal to buffer.maxbuffersize")
+	}
+
+	if c.Retry.Attempts < 0 {
+		return fmt.Errorf("retry.attempts must be greater than or equal to 0")
+	}
+
+	if c.Retry.BackoffMin <= 0 {
+		return fmt.Errorf("retry.backoffmin must be greater than 0")
+	}
+
+	return nil
 }
 
 // setDefaults sets default configuration values
@@ -98,30 +139,30 @@ func bindEnvVars(v *viper.Viper) {
 	// Use uppercase env vars for compatibility
 	err := v.BindEnv("server.port", "PORT")
 	if err != nil {
-		log.Fatalf("failed to bind env variable: %v", err)
+		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
 	err = v.BindEnv("elasticsearch.url", "ES_URL")
 	if err != nil {
-		log.Fatalf("failed to bind env variable: %v", err)
+		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
 	err = v.BindEnv("buffer.flushinterval", "FLUSH_INTERVAL")
 	if err != nil {
-		log.Fatalf("failed to bind env variable: %v", err)
+		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
 	err = v.BindEnv("buffer.maxbatchsize", "MAX_BATCH_SIZE")
 	if err != nil {
-		log.Fatalf("failed to bind env variable: %v", err)
+		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
 	err = v.BindEnv("buffer.maxbuffersize", "MAX_BUFFER_SIZE")
 	if err != nil {
-		log.Fatalf("failed to bind env variable: %v", err)
+		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
 	err = v.BindEnv("retry.attempts", "RETRY_ATTEMPTS")
 	if err != nil {
-		log.Fatalf("failed to bind env variable: %v", err)
+		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
 	err = v.BindEnv("retry.backoffmin", "RETRY_BACKOFF_MIN")
 	if err != nil {
-		log.Fatalf("failed to bind env variable: %v", err)
+		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
 }
