@@ -44,3 +44,4 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+dist/es-bulk-proxy-latest-multiarch.tar

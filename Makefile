@@ -5,6 +5,7 @@ IMAGE-PREFIX=ssingh3339
 BINARY_NAME=es-bulk-proxy
 IMAGE_NAME=es-bulk-proxy
 IMAGE_TAG=latest
+IMAGE_ARCHIVE=dist/$(IMAGE_NAME)-$(IMAGE_TAG)-multiarch.tar
 DOCKER_REGISTRY ?= localhost
 
 help: ## Show this help message
@@ -39,15 +40,16 @@ lint: ## Run linters
 	pre-commit run --all-files
 
 docker-build: ## Build Docker image
+	mkdir -p dist
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
-		--output "type=docker,push=false" \
+		--output "type=oci,dest=$(IMAGE_ARCHIVE)" \
 		--tag $(IMAGE-PREFIX)/$(IMAGE_NAME):$(IMAGE_TAG) .
 
-docker-publish: docker-build ## Build and publish Docker image
+docker-publish: ## Build and publish Docker image
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
-		--output "type=image,push=true" \
+		--push \
 		--tag $(IMAGE-PREFIX)/$(IMAGE_NAME):$(IMAGE_TAG) .
 
 docker-run: ## Run Docker container
