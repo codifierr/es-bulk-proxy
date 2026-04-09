@@ -125,7 +125,7 @@ func (ph *ProxyHandler) handleBulk(w http.ResponseWriter, r *http.Request) {
 	// Return immediate success
 	w.Header().Set(contentTypeHeader, contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"errors":false}`))
+	_, _ = w.Write([]byte(`{"errors":false}`))
 }
 
 // classifyRequest determines the type of non-bulk request
@@ -167,7 +167,7 @@ func Health() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(contentTypeHeader, contentTypeJSON)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"healthy"}`))
+		_, _ = w.Write([]byte(`{"status":"healthy"}`))
 	}
 }
 
@@ -176,6 +176,6 @@ func Ready() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(contentTypeHeader, contentTypeJSON)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ready"}`))
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
 	}
 }

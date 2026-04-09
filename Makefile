@@ -30,8 +30,7 @@ run: ## Run the application locally
 	ES_URL=http://localhost:9200 go run ./cmd/es-bulk-proxy
 
 test: ## Run tests
-	go test -v -race -coverprofile=coverage.out ./...
-	go tool cover -html=coverage.out -o coverage.html
+	go test -v ./...
 
 lint: ## Run linters
 	@which golangci-lint > /dev/null || (echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest)

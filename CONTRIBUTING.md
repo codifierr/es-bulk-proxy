@@ -195,7 +195,7 @@ package example
 import (
     "context"
     "fmt"
-    
+
     "github.com/rs/zerolog/log"
 )
 
@@ -249,7 +249,7 @@ func TestBufferAdd(t *testing.T) {
         {"valid data", []byte(`{"index": {}}`), false},
         {"empty data", []byte{}, true},
     }
-    
+
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             buf := NewBuffer(1024)
