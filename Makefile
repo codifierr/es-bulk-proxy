@@ -29,7 +29,7 @@ build: ## Build the binary
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags='-w -s' -o $(BINARY_NAME) ./cmd
 
 run: ## Run the application locally
-	ES_URL=http://localhost:9200 go run ./cmd/es-bulk-proxy
+	ES_URL=http://localhost:9200 go run ./cmd
 
 test: ## Run tests
 	go test -v ./...
@@ -70,7 +70,7 @@ docker-compose-down: ## Stop services with Docker Compose
 	cd deployments && docker compose down -v
 
 docker-compose-logs: ## View Docker Compose logs
-	cd deployments && docker compose logs -f es-proxy
+	cd deployments && docker compose logs -f es-bulk-proxy
 
 integration-test: docker-compose-up ## Run integration tests
 	@chmod +x scripts/test.sh
@@ -83,15 +83,15 @@ k8s-delete: ## Delete from Kubernetes
 	kubectl delete -f deployments/kubernetes.yaml
 
 k8s-logs: ## View Kubernetes logs
-	kubectl logs -l app=es-proxy -f
+	kubectl logs -l app=es-bulk-proxy -f
 
 k8s-port-forward: ## Port forward Kubernetes service
-	kubectl port-forward svc/es-proxy 8080:8080
+	kubectl port-forward svc/es-bulk-proxy 8080:8080
 
 clean: ## Clean build artifacts
 	rm -f $(BINARY_NAME)
 	rm -f coverage.out coverage.html
-	docker-compose down -v || true
+	cd deployments && docker compose down -v || true
 	docker rmi $(IMAGE_NAME):$(IMAGE_TAG) || true
 
 format: ## Format Go code
@@ -112,7 +112,7 @@ dev: docker-compose-up ## Start development environment
 	@echo "Elasticsearch: http://localhost:9200"
 	@echo "Prometheus: http://localhost:9090"
 	@echo "Grafana: http://localhost:3001 (admin/admin)"
-	@echo "Dashboard: http://localhost:3001/d/es-proxy-dashboard"
+	@echo "Dashboard: http://localhost:3001/d/es-bulk-proxy-dashboard"
 	@echo ""
 	@echo "Run 'make docker-compose-logs' to view logs"
 	@echo "Run 'make test-traffic' to generate sample traffic"

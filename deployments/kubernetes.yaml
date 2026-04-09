@@ -161,14 +161,14 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: es-proxy
+  name: es-bulk-proxy
   namespace: default
   labels:
-    app: es-proxy
+    app: es-bulk-proxy
 spec:
   selector:
     matchLabels:
-      app: es-proxy
+      app: es-bulk-proxy
   endpoints:
   - port: metrics
     interval: 15s
@@ -179,10 +179,10 @@ spec:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: es-proxy-pdb
+  name: es-bulk-proxy-pdb
   namespace: default
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: es-proxy
+      app: es-bulk-proxy

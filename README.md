@@ -29,8 +29,7 @@ Following the [standard Go project layout](https://github.com/golang-standards/p
 ```
 es-bulk-proxy/
 ├── cmd/
-│   └── es-bulk-proxy/           # Main application entry point
-│       └── main.go
+│   └── main.go                 # Main application entry point
 ├── internal/               # Private application code
 │   ├── buffer/            # Bulk buffer aggregation logic
 │   │   └── buffer.go
@@ -97,7 +96,7 @@ The fastest way to get started with a complete stack:
 
 ```bash
 cd deployments
-docker-compose up -d
+docker compose up -d
 ```
 
 This starts:
