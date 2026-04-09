@@ -144,6 +144,20 @@ docker run -d \
   es-bulk-proxy:latest
 ```
 
+### Option 4: Using the Published Docker Image
+
+You can run the prebuilt image from Docker Hub directly:
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  -e ES_URL=http://elasticsearch:9200 \
+  --name es-bulk-proxy \
+  ssingh3339/es-bulk-proxy:latest
+```
+
+If you're running Elasticsearch in Docker Compose or Kubernetes, replace `http://elasticsearch:9200` with the appropriate service URL.
+
 ## ⚙️ Configuration
 
 ES Proxy supports configuration through:
