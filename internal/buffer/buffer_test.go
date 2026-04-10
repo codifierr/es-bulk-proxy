@@ -37,6 +37,44 @@ func TestNewManager(t *testing.T) {
 	if manager.config != cfg {
 		t.Error("config not set correctly")
 	}
+	if manager.esClient == nil {
+		t.Error("shared esClient not initialized")
+	}
+}
+
+func TestNewManager_UsesSharedHTTPClient(t *testing.T) {
+	cfg := &config.Config{
+		Buffer: config.BufferConfig{
+			FlushInterval: 1 * time.Second,
+			MaxBatchSize:  1024,
+			MaxBufferSize: 10240,
+		},
+	}
+	manager := NewManager(cfg, logger.New(true), testMetrics)
+
+	first := manager.getOrCreateBuffer("/_bulk")
+	second := manager.getOrCreateBuffer("/index/_bulk")
+
+	if first.esClient != manager.esClient {
+		t.Fatal("first buffer should reuse manager esClient")
+	}
+	if second.esClient != manager.esClient {
+		t.Fatal("second buffer should reuse manager esClient")
+	}
+
+	transport, ok := manager.esClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("manager esClient transport should be *http.Transport")
+	}
+	if transport.MaxIdleConns != 100 {
+		t.Errorf("MaxIdleConns = %d, want 100", transport.MaxIdleConns)
+	}
+	if transport.MaxIdleConnsPerHost != 32 {
+		t.Errorf("MaxIdleConnsPerHost = %d, want 32", transport.MaxIdleConnsPerHost)
+	}
+	if transport.IdleConnTimeout != 90*time.Second {
+		t.Errorf("IdleConnTimeout = %v, want 90s", transport.IdleConnTimeout)
+	}
 }
 
 func TestBufferManager_Add(t *testing.T) {
@@ -194,7 +232,7 @@ func TestIndexBuffer_Add(t *testing.T) {
 		config:    cfg,
 		logger:    log,
 		metrics:   m,
-		esClient:  &http.Client{Timeout: 30 * time.Second},
+		esClient:  newESHTTPClient(),
 		lastFlush: time.Now(),
 	}
 	buf.flushTimer = time.AfterFunc(cfg.Buffer.FlushInterval, buf.timedFlush)
@@ -266,7 +304,7 @@ func TestIndexBuffer_FlushOnSizeThreshold(t *testing.T) {
 		config:    cfg,
 		logger:    log,
 		metrics:   m,
-		esClient:  &http.Client{Timeout: 30 * time.Second},
+		esClient:  newESHTTPClient(),
 		lastFlush: time.Now(),
 	}
 	buf.flushTimer = time.AfterFunc(cfg.Buffer.FlushInterval, buf.timedFlush)
@@ -320,7 +358,7 @@ func TestIndexBuffer_TimedFlush(t *testing.T) {
 		config:    cfg,
 		logger:    log,
 		metrics:   m,
-		esClient:  &http.Client{Timeout: 30 * time.Second},
+		esClient:  newESHTTPClient(),
 		lastFlush: time.Now(),
 	}
 	buf.flushTimer = time.AfterFunc(cfg.Buffer.FlushInterval, buf.timedFlush)
@@ -370,7 +408,7 @@ func TestIndexBuffer_SendWithRetry_Success(t *testing.T) {
 		config:    cfg,
 		logger:    log,
 		metrics:   m,
-		esClient:  &http.Client{Timeout: 30 * time.Second},
+		esClient:  newESHTTPClient(),
 	}
 
 	data := []byte(`{"index":{}}\n{"field":"value"}\n`)
@@ -406,7 +444,7 @@ func TestIndexBuffer_SendWithRetry_Failure(t *testing.T) {
 		config:    cfg,
 		logger:    log,
 		metrics:   m,
-		esClient:  &http.Client{Timeout: 30 * time.Second},
+		esClient:  newESHTTPClient(),
 	}
 
 	data := []byte(`{"index":{}}\n{"field":"value"}\n`)
@@ -453,7 +491,7 @@ func TestIndexBuffer_Shutdown(t *testing.T) {
 		config:    cfg,
 		logger:    log,
 		metrics:   m,
-		esClient:  &http.Client{Timeout: 30 * time.Second},
+		esClient:  newESHTTPClient(),
 		lastFlush: time.Now(),
 	}
 	buf.flushTimer = time.AfterFunc(cfg.Buffer.FlushInterval, buf.timedFlush)
@@ -520,7 +558,7 @@ func TestIndexBuffer_EmptyFlush(t *testing.T) {
 		config:    cfg,
 		logger:    log,
 		metrics:   m,
-		esClient:  &http.Client{Timeout: 30 * time.Second},
+		esClient:  newESHTTPClient(),
 	}
 
 	// Flushing empty buffer should be no-op
