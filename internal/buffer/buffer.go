@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -15,11 +16,12 @@ import (
 
 // BufferManager manages multiple index-specific buffers
 type BufferManager struct {
-	mu      sync.RWMutex
-	buffers map[string]*IndexBuffer
-	config  *config.Config
-	logger  *logger.Logger
-	metrics *metrics.Metrics
+	mu       sync.RWMutex
+	buffers  map[string]*IndexBuffer
+	config   *config.Config
+	logger   *logger.Logger
+	metrics  *metrics.Metrics
+	esClient *http.Client
 }
 
 // IndexBuffer aggregates bulk requests for a specific index
@@ -40,10 +42,32 @@ type IndexBuffer struct {
 // NewManager creates a new buffer manager
 func NewManager(cfg *config.Config, log *logger.Logger, m *metrics.Metrics) *BufferManager {
 	return &BufferManager{
-		buffers: make(map[string]*IndexBuffer),
-		config:  cfg,
-		logger:  log,
-		metrics: m,
+		buffers:  make(map[string]*IndexBuffer),
+		config:   cfg,
+		logger:   log,
+		metrics:  m,
+		esClient: newESHTTPClient(),
+	}
+}
+
+func newESHTTPClient() *http.Client {
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   5 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   32,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+
+	return &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: transport,
 	}
 }
 
@@ -72,7 +96,7 @@ func (bm *BufferManager) getOrCreateBuffer(indexPath string) *IndexBuffer {
 		config:    bm.config,
 		logger:    bm.logger,
 		metrics:   bm.metrics,
-		esClient:  &http.Client{Timeout: 30 * time.Second},
+		esClient:  bm.esClient,
 		lastFlush: time.Now(),
 	}
 
@@ -100,6 +124,10 @@ func (bm *BufferManager) Shutdown() {
 
 	for _, buf := range bm.buffers {
 		buf.Shutdown()
+	}
+
+	if transport, ok := bm.esClient.Transport.(*http.Transport); ok {
+		transport.CloseIdleConnections()
 	}
 }
 
