@@ -553,6 +553,17 @@
           "legendFormat": "Failures/s",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "rate(es_proxy_bulk_requeues_total[1m])",
+          "legendFormat": "Requeues/s",
+          "range": true,
+          "refId": "C"
         }
       ],
       "title": "Bulk Batch Rate",
@@ -936,12 +947,23 @@
           },
           "editorMode": "code",
           "expr": "avg by(index_path) (es_proxy_buffer_size_bytes)",
-          "legendFormat": "{{index_path}}",
+          "legendFormat": "{{index_path}} occupied",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "editorMode": "code",
+          "expr": "avg by(index_path) (es_proxy_buffer_in_flight_bytes)",
+          "legendFormat": "{{index_path}} in-flight",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "Buffer Usage By Index",
+      "title": "Buffer State By Index",
       "type": "timeseries"
     }
   ],

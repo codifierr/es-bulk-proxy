@@ -1,0 +1,220 @@
+version: "2"
+run:
+  concurrency: 4
+  issues-exit-code: 1
+  tests: false
+linters:
+  default: none
+  enable:
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - copyloopvar
+    - cyclop
+    - dogsled
+    - dupword
+    - errcheck
+    - errorlint
+    - forbidigo
+    - funlen
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - godox
+    - goprintffuncname
+    - gosec
+    - govet
+    - ineffassign
+    - maintidx
+    - misspell
+    - mnd
+    - nakedret
+    - nestif
+    - nlreturn
+    - noctx
+    - perfsprint
+    - prealloc
+    - revive
+    - rowserrcheck
+    - staticcheck
+    - testableexamples
+    - testpackage
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - whitespace
+    - wsl
+    - zerologlint
+  settings:
+    dogsled:
+      max-blank-identifiers: 2
+    dupl:
+      threshold: 150
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+    funlen:
+      lines: 110
+      statements: 60
+    gocognit:
+      min-complexity: 30
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    gocritic:
+      disabled-checks:
+        - regexpMust
+      enabled-tags:
+        - performance
+      settings:
+        captLocal:
+          paramsOnly: true
+        rangeValCopy:
+          sizeThreshold: 32
+    gocyclo:
+      min-complexity: 20
+    godox:
+      keywords:
+        - NOTE
+        - OPTIMIZE
+        - HACK
+    gosec:
+      excludes:
+        - G115
+    govet:
+      enable:
+        - atomicalign
+      disable:
+        - shadow
+      enable-all: false
+      disable-all: false
+      settings:
+        printf:
+          funcs:
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Infof
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Warnf
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Errorf
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Fatalf
+    lll:
+      line-length: 300
+      tab-width: 1
+    misspell:
+      locale: US
+    mnd:
+      checks:
+        - argument
+        - case
+        - condition
+        - operation
+        - return
+        - assign
+    nakedret:
+      max-func-lines: 30
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+    revive:
+      severity: warning
+      rules:
+        - name: atomic
+        - name: line-length-limit
+          disabled: true
+        - name: unhandled-error
+          arguments:
+            - fmt.Printf
+            - myFunction
+            - strings.Builder.WriteString
+        - name: package-comments
+          disabled: true
+    rowserrcheck:
+      packages:
+        - github.com/jmoiron/sqlx
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+    unparam:
+      check-exported: false
+    whitespace:
+      multi-if: true
+      multi-func: true
+    wsl:
+      strict-append: true
+      allow-assign-and-call: true
+      allow-multiline-assign: true
+      force-case-trailing-whitespace: 0
+      allow-trailing-comment: true
+      allow-separated-leading-comment: false
+      allow-cuddle-declarations: false
+      force-err-cuddling: true
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - dupl
+          - errcheck
+          - gocyclo
+          - gosec
+        path: _test\.go
+      - linters:
+          - gosec
+        path: internal/hmac/
+        text: weak cryptographic primitive
+      - linters:
+          - staticcheck
+        text: 'SA9003:'
+      - linters:
+          - lll
+        source: '^//go:generate '
+      - path: (.+)\.go$
+        text: abcdef
+    paths:
+      - .*\.my\.go$
+      - lib/bad.go
+      - .*\.pb\.go$
+      - build
+      - scripts
+      - kube
+      - example
+      - proto
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+    goimports:
+      local-prefixes:
+        - github.com/org/project
+  exclusions:
+    generated: lax
+    paths:
+      - .*\.my\.go$
+      - lib/bad.go
+      - .*\.pb\.go$
+      - build
+      - scripts
+      - kube
+      - example
+      - proto
+      - third_party$
+      - builtin$
+      - examples$

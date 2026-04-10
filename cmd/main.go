@@ -18,6 +18,13 @@ import (
 
 const version = "2.0.0"
 
+const (
+	serverReadTimeout  = 30 * time.Second
+	serverWriteTimeout = 30 * time.Second
+	serverIdleTimeout  = 120 * time.Second
+	shutdownTimeout    = 30 * time.Second
+)
+
 func main() {
 	// Initialize logger
 	log := logger.New(isDevelopment())
@@ -62,9 +69,9 @@ func main() {
 	server := &http.Server{
 		Addr:         ":" + cfg.Server.Port,
 		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  serverReadTimeout,
+		WriteTimeout: serverWriteTimeout,
+		IdleTimeout:  serverIdleTimeout,
 	}
 
 	// Start server in goroutine
@@ -72,6 +79,7 @@ func main() {
 		log.InfoFields("server listening", map[string]any{
 			"port": cfg.Server.Port,
 		})
+
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.FatalFields("server failed to start", map[string]any{
 				"error": err.Error(),
@@ -87,7 +95,7 @@ func main() {
 	log.InfoFields("shutting down server", map[string]any{})
 
 	// Graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
 	bulkBuffer.Shutdown()
@@ -101,8 +109,9 @@ func main() {
 	log.InfoFields("server stopped", map[string]interface{}{})
 }
 
-// isDevelopment checks if running in development mode
+// isDevelopment checks if running in development mode.
 func isDevelopment() bool {
 	env := os.Getenv("ENVIRONMENT")
+
 	return env == "development" || env == "dev" || env == ""
 }

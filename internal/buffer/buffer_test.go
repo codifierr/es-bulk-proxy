@@ -460,6 +460,89 @@ func TestIndexBuffer_SendWithRetry_Failure(t *testing.T) {
 	}
 }
 
+func TestIndexBuffer_FlushFailureRequeuesData(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal error"}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		Elasticsearch: config.ElasticsearchConfig{
+			URL: ts.URL,
+		},
+		Buffer: config.BufferConfig{
+			FlushInterval: 10 * time.Second,
+			MaxBatchSize:  1024,
+			MaxBufferSize: 2048,
+		},
+		Retry: config.RetryConfig{
+			Attempts:   0,
+			BackoffMin: 10 * time.Millisecond,
+		},
+	}
+
+	buf := &IndexBuffer{
+		indexPath: "/_bulk",
+		data:      []byte("failed batch\n"),
+		size:      int64(len("failed batch\n")),
+		config:    cfg,
+		logger:    logger.New(true),
+		metrics:   testMetrics,
+		esClient:  newESHTTPClient(),
+		lastFlush: time.Now(),
+	}
+
+	buf.flush()
+
+	buf.mu.Lock()
+	defer buf.mu.Unlock()
+
+	if buf.flushInFlight {
+		t.Fatal("flush should not remain in-flight after failure")
+	}
+	if buf.inFlightSize != 0 {
+		t.Fatalf("inFlightSize = %d, want 0", buf.inFlightSize)
+	}
+	if string(buf.data) != "failed batch\n" {
+		t.Fatalf("requeued data = %q, want original batch", string(buf.data))
+	}
+	if buf.size != int64(len("failed batch\n")) {
+		t.Fatalf("size = %d, want %d", buf.size, len("failed batch\n"))
+	}
+}
+
+func TestIndexBuffer_AddCountsInFlightBytesAgainstCapacity(t *testing.T) {
+	cfg := &config.Config{
+		Buffer: config.BufferConfig{
+			FlushInterval: 10 * time.Second,
+			MaxBatchSize:  1024,
+			MaxBufferSize: 100,
+		},
+	}
+
+	buf := &IndexBuffer{
+		indexPath:     "/_bulk",
+		config:        cfg,
+		logger:        logger.New(true),
+		metrics:       testMetrics,
+		esClient:      newESHTTPClient(),
+		inFlightData:  make([]byte, 90),
+		inFlightSize:  90,
+		inFlightReqs:  1,
+		flushInFlight: true,
+		lastFlush:     time.Now(),
+	}
+
+	if err := buf.Add(make([]byte, 10)); err != nil {
+		t.Fatalf("Add() should allow data within remaining capacity: %v", err)
+	}
+
+	if err := buf.Add([]byte("x")); err == nil {
+		t.Fatal("Add() should reject writes once queued plus in-flight bytes exceed max buffer size")
+	}
+}
+
 func TestIndexBuffer_Shutdown(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

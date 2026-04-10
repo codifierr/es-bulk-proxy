@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -8,7 +9,13 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Config holds all application configuration
+const (
+	defaultMaxBatchSize  int64 = 5 * 1024 * 1024
+	defaultMaxBufferSize int64 = 50 * 1024 * 1024
+	defaultRetryAttempts       = 3
+)
+
+// Config holds all application configuration.
 type Config struct {
 	Server        ServerConfig
 	Elasticsearch ElasticsearchConfig
@@ -16,30 +23,30 @@ type Config struct {
 	Retry         RetryConfig
 }
 
-// ServerConfig holds HTTP server configuration
+// ServerConfig holds HTTP server configuration.
 type ServerConfig struct {
 	Port string
 }
 
-// ElasticsearchConfig holds Elasticsearch connection configuration
+// ElasticsearchConfig holds Elasticsearch connection configuration.
 type ElasticsearchConfig struct {
 	URL string
 }
 
-// BufferConfig holds bulk buffer configuration
+// BufferConfig holds bulk buffer configuration.
 type BufferConfig struct {
 	FlushInterval time.Duration
 	MaxBatchSize  int64
 	MaxBufferSize int64
 }
 
-// RetryConfig holds retry configuration
+// RetryConfig holds retry configuration.
 type RetryConfig struct {
 	Attempts   int
 	BackoffMin time.Duration
 }
 
-// Load loads configuration from environment variables and config files
+// Load loads configuration from environment variables and config files.
 func Load() (*Config, error) {
 	v := viper.New()
 
@@ -55,7 +62,8 @@ func Load() (*Config, error) {
 
 	// Read config file (optional)
 	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		var configFileNotFoundError viper.ConfigFileNotFoundError
+		if !errors.As(err, &configFileNotFoundError) {
 			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
 		// Config file not found; using defaults and env vars
@@ -82,7 +90,7 @@ func Load() (*Config, error) {
 // Validate checks that configuration values are internally consistent.
 func (c *Config) Validate() error {
 	if c.Server.Port == "" {
-		return fmt.Errorf("server.port must not be empty")
+		return errors.New("server.port must not be empty")
 	}
 
 	if _, err := url.ParseRequestURI(c.Elasticsearch.URL); err != nil {
@@ -90,33 +98,33 @@ func (c *Config) Validate() error {
 	}
 
 	if c.Buffer.FlushInterval <= 0 {
-		return fmt.Errorf("buffer.flushinterval must be greater than 0")
+		return errors.New("buffer.flushinterval must be greater than 0")
 	}
 
 	if c.Buffer.MaxBatchSize <= 0 {
-		return fmt.Errorf("buffer.maxbatchsize must be greater than 0")
+		return errors.New("buffer.maxbatchsize must be greater than 0")
 	}
 
 	if c.Buffer.MaxBufferSize <= 0 {
-		return fmt.Errorf("buffer.maxbuffersize must be greater than 0")
+		return errors.New("buffer.maxbuffersize must be greater than 0")
 	}
 
 	if c.Buffer.MaxBatchSize > c.Buffer.MaxBufferSize {
-		return fmt.Errorf("buffer.maxbatchsize must be less than or equal to buffer.maxbuffersize")
+		return errors.New("buffer.maxbatchsize must be less than or equal to buffer.maxbuffersize")
 	}
 
 	if c.Retry.Attempts < 0 {
-		return fmt.Errorf("retry.attempts must be greater than or equal to 0")
+		return errors.New("retry.attempts must be greater than or equal to 0")
 	}
 
 	if c.Retry.BackoffMin <= 0 {
-		return fmt.Errorf("retry.backoffmin must be greater than 0")
+		return errors.New("retry.backoffmin must be greater than 0")
 	}
 
 	return nil
 }
 
-// setDefaults sets default configuration values
+// setDefaults sets default configuration values.
 func setDefaults(v *viper.Viper) {
 	// Server defaults
 	v.SetDefault("server.port", "8080")
@@ -126,41 +134,47 @@ func setDefaults(v *viper.Viper) {
 
 	// Buffer defaults
 	v.SetDefault("buffer.flushinterval", "30s")
-	v.SetDefault("buffer.maxbatchsize", 5242880)   // 5MB
-	v.SetDefault("buffer.maxbuffersize", 52428800) // 50MB
+	v.SetDefault("buffer.maxbatchsize", defaultMaxBatchSize)
+	v.SetDefault("buffer.maxbuffersize", defaultMaxBufferSize)
 
 	// Retry defaults
-	v.SetDefault("retry.attempts", 3)
+	v.SetDefault("retry.attempts", defaultRetryAttempts)
 	v.SetDefault("retry.backoffmin", "100ms")
 }
 
-// bindEnvVars binds environment variables to config keys
+// bindEnvVars binds environment variables to config keys.
 func bindEnvVars(v *viper.Viper) {
 	// Use uppercase env vars for compatibility
 	err := v.BindEnv("server.port", "PORT")
 	if err != nil {
 		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
+
 	err = v.BindEnv("elasticsearch.url", "ES_URL")
 	if err != nil {
 		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
+
 	err = v.BindEnv("buffer.flushinterval", "FLUSH_INTERVAL")
 	if err != nil {
 		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
+
 	err = v.BindEnv("buffer.maxbatchsize", "MAX_BATCH_SIZE")
 	if err != nil {
 		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
+
 	err = v.BindEnv("buffer.maxbuffersize", "MAX_BUFFER_SIZE")
 	if err != nil {
 		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
+
 	err = v.BindEnv("retry.attempts", "RETRY_ATTEMPTS")
 	if err != nil {
 		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}
+
 	err = v.BindEnv("retry.backoffmin", "RETRY_BACKOFF_MIN")
 	if err != nil {
 		panic(fmt.Sprintf("failed to bind env variable: %v", err))
