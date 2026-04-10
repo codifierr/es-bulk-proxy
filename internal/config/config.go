@@ -51,7 +51,7 @@ func Load() (*Config, error) {
 	v.SetConfigType("yaml")
 	v.AddConfigPath("./configs")
 	v.AddConfigPath(".")
-	v.AddConfigPath("/etc/es-proxy")
+	v.AddConfigPath("/etc/es-bulk-proxy")
 
 	// Read config file (optional)
 	if err := v.ReadInConfig(); err != nil {

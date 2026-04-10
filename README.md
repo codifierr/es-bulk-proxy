@@ -373,13 +373,13 @@ make test
 
 ```bash
 cd deployments
-docker-compose up -d
+docker compose up -d
 
 # View logs
-docker-compose logs -f es-bulk-proxy
+docker compose logs -f es-bulk-proxy
 
 # Stop
-docker-compose down
+docker compose down
 ```
 
 ### Kubernetes
@@ -434,8 +434,8 @@ A pre-configured Grafana dashboard is included for comprehensive monitoring:
 **Quick Setup:**
 
 ```bash
-# Dashboard is auto-provisioned with docker-compose
-cd deployments && docker-compose up -d
+# Dashboard is auto-provisioned with docker compose
+cd deployments && docker compose up -d
 
 # Generate test traffic
 chmod +x generate-test-traffic.sh
@@ -478,7 +478,7 @@ Import the provided dashboard or create custom dashboards using the metrics abov
 **Pre-configured Dashboard:**
 
 - Located at: `deployments/grafana-dashboard.json`
-- Auto-provisioned when using docker-compose
+- Auto-provisioned when using docker compose
 - Access: <http://localhost:3001/d/es-bulk-proxy-dashboard>
 - Includes 11 panels covering all key metrics
 

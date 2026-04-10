@@ -8,7 +8,7 @@ The dashboard includes the following panels:
 
 ### Key Metrics
 
-1. **Request Rate by Type** - Real-time requests per second (bulk vs proxy)
+1. **Request Rate by Type** - Real-time requests per second by request type
 2. **Current Buffer Size** - Gauge showing buffer usage with thresholds
 3. **Total Requests** - Counter of all requests processed
 4. **Bulk Batches Sent** - Number of batches sent to Elasticsearch
@@ -17,11 +17,11 @@ The dashboard includes the following panels:
 
 ### Detailed Visualizations
 
-7. **Bulk Batch Rate** - Batches and failures per second over time
+1. **Bulk Batch Rate** - Batches and failures per second over time
 2. **Buffer Size Over Time** - Historical buffer usage with warning thresholds
-3. **Request Latency Percentiles** - p50, p95, p99 latency for bulk and proxy requests
-4. **Request Type Distribution** - Pie chart showing bulk vs proxy traffic
-5. **Average Buffer Usage** - Average buffer size trend
+3. **Request Latency Percentiles** - p50, p95, p99 latency by request type and method
+4. **Request Type Distribution** - Pie chart showing traffic by request type and method
+5. **Buffer Usage By Index** - Buffer usage trend per index path
 
 ## 🚀 Quick Start
 
@@ -31,7 +31,7 @@ The dashboard is automatically provisioned when you run:
 
 ```bash
 cd deployments
-docker-compose up -d
+docker compose up -d
 ```
 
 Then access Grafana at: **<http://localhost:3001>**
@@ -42,7 +42,7 @@ Then access Grafana at: **<http://localhost:3001>**
 - Password: `admin`
 
 The dashboard will be automatically available at:
-<http://localhost:3001/d/es-bulk-proxy-dashboard/elasticsearch-proxy-dashboard>
+<http://localhost:3001/d/es-bulk-proxy-dashboard>
 
 ### Manual Import
 
@@ -92,7 +92,7 @@ If you need to manually import the dashboard:
 **Capacity:**
 
 - **Buffer Size** - Monitor for capacity planning
-- **Request Distribution** - Understand bulk vs proxy ratio
+- **Request Distribution** - Understand traffic mix by request type
 
 ## 🎨 Customization
 
@@ -113,7 +113,7 @@ Default is last 15 minutes. Use the time picker (top right) to adjust.
 2. Choose **Add a new panel**
 3. Select Prometheus datasource
 4. Use available metrics:
-   - `es_proxy_requests_total{type="bulk|proxy"}`
+   - `es_proxy_requests_total{type, method}`
    - `es_proxy_bulk_batches_total`
    - `es_proxy_bulk_failures_total`
    - `es_proxy_buffer_size_bytes{index_path}`
@@ -121,7 +121,7 @@ Default is last 15 minutes. Use the time picker (top right) to adjust.
 
 ## 🔗 Dashboard Links
 
-After starting with `docker-compose up -d`:
+After starting with `docker compose up -d`:
 
 - **Grafana**: <http://localhost:3001>
 - **Dashboard**: <http://localhost:3001/d/es-bulk-proxy-dashboard>
