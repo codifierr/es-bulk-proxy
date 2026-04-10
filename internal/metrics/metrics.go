@@ -5,16 +5,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
-// Metrics holds all Prometheus metrics
+// Metrics holds all Prometheus metrics.
 type Metrics struct {
-	RequestsTotal     *prometheus.CounterVec
-	BulkBatchesTotal  prometheus.Counter
-	BulkFailuresTotal prometheus.Counter
-	BufferSizeBytes   *prometheus.GaugeVec
-	ProxyLatency      *prometheus.HistogramVec
+	RequestsTotal          *prometheus.CounterVec
+	BulkBatchesTotal       prometheus.Counter
+	BulkFailuresTotal      prometheus.Counter
+	BulkRequeuesTotal      *prometheus.CounterVec
+	BufferSizeBytes        *prometheus.GaugeVec
+	BufferInFlightBytes    *prometheus.GaugeVec
+	BufferInFlightRequests *prometheus.GaugeVec
+	ProxyLatency           *prometheus.HistogramVec
 }
 
-// New creates and registers all metrics
+// New creates and registers all metrics.
 func New() *Metrics {
 	return &Metrics{
 		RequestsTotal: promauto.NewCounterVec(
@@ -36,10 +39,31 @@ func New() *Metrics {
 				Help: "Total number of bulk batch send failures",
 			},
 		),
+		BulkRequeuesTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "es_proxy_bulk_requeues_total",
+				Help: "Total number of bulk batches requeued after a failed send",
+			},
+			[]string{"index_path"},
+		),
 		BufferSizeBytes: promauto.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Name: "es_proxy_buffer_size_bytes",
-				Help: "Current buffer size in bytes by bulk index path",
+				Help: "Current occupied buffer size in bytes by bulk index path, including in-flight bytes",
+			},
+			[]string{"index_path"},
+		),
+		BufferInFlightBytes: promauto.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "es_proxy_buffer_in_flight_bytes",
+				Help: "Current in-flight buffer size in bytes by bulk index path",
+			},
+			[]string{"index_path"},
+		),
+		BufferInFlightRequests: promauto.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "es_proxy_buffer_in_flight_requests",
+				Help: "Current in-flight request count by bulk index path",
 			},
 			[]string{"index_path"},
 		),

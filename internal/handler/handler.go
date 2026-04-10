@@ -18,9 +18,15 @@ const (
 	contentTypeHeader = "Content-Type"
 	contentTypeJSON   = "application/json"
 	contentTypeNDJSON = "application/x-ndjson"
+	requestTypeSearch = "search"
+	requestTypeRead   = "read"
+	requestTypeWrite  = "write"
+	requestTypeDelete = "delete"
+	requestTypeMaint  = "maintenance"
+	requestTypeOther  = "other"
 )
 
-// ProxyHandler handles routing between bulk and proxy requests
+// ProxyHandler handles routing between bulk and proxy requests.
 type ProxyHandler struct {
 	bulkBuffer *buffer.BufferManager
 	proxy      *httputil.ReverseProxy
@@ -29,7 +35,7 @@ type ProxyHandler struct {
 	metrics    *metrics.Metrics
 }
 
-// New creates a new proxy handler
+// New creates a new proxy handler.
 func New(cfg *config.Config, bb *buffer.BufferManager, log *logger.Logger, m *metrics.Metrics) *ProxyHandler {
 	esURL, _ := url.Parse(cfg.Elasticsearch.URL)
 
@@ -51,7 +57,7 @@ func New(cfg *config.Config, bb *buffer.BufferManager, log *logger.Logger, m *me
 	}
 }
 
-// ServeHTTP handles incoming requests
+// ServeHTTP handles incoming requests.
 func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
@@ -64,7 +70,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Handle bulk requests - match both /_bulk and /index_name/_bulk patterns
 	// Zenarmor may use index-specific bulk endpoints like /my-index/_bulk
-	isBulkRequest := (r.Method == "POST" || r.Method == "PUT") &&
+	isBulkRequest := (r.Method == http.MethodPost || r.Method == http.MethodPut) &&
 		(r.URL.Path == "/_bulk" || strings.HasSuffix(r.URL.Path, "/_bulk"))
 
 	if isBulkRequest {
@@ -75,6 +81,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ph.metrics.RequestsTotal.WithLabelValues("bulk", r.Method).Inc()
 		ph.handleBulk(w, r)
 		ph.metrics.ProxyLatency.WithLabelValues("bulk", r.Method).Observe(time.Since(start).Seconds())
+
 		return
 	}
 
@@ -85,7 +92,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ph.metrics.ProxyLatency.WithLabelValues(requestType, r.Method).Observe(time.Since(start).Seconds())
 }
 
-// handleBulk handles /_bulk requests
+// handleBulk handles /_bulk requests.
 func (ph *ProxyHandler) handleBulk(w http.ResponseWriter, r *http.Request) {
 	// Read body
 	body, err := io.ReadAll(r.Body)
@@ -94,8 +101,10 @@ func (ph *ProxyHandler) handleBulk(w http.ResponseWriter, r *http.Request) {
 			"error": err.Error(),
 		})
 		http.Error(w, "Failed to read request", http.StatusBadRequest)
+
 		return
 	}
+
 	defer func() {
 		err := r.Body.Close()
 		if err != nil {
@@ -119,6 +128,7 @@ func (ph *ProxyHandler) handleBulk(w http.ResponseWriter, r *http.Request) {
 			"indexPath": r.URL.Path,
 		})
 		http.Error(w, "Buffer full", http.StatusTooManyRequests)
+
 		return
 	}
 
@@ -128,41 +138,51 @@ func (ph *ProxyHandler) handleBulk(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"errors":false}`))
 }
 
-// classifyRequest determines the type of non-bulk request
+// classifyRequest determines the type of non-bulk request.
 func (ph *ProxyHandler) classifyRequest(r *http.Request) string {
-	path := r.URL.Path
-
-	// Check for common read-only operations that use POST
-	if r.Method == "POST" {
-		// Search operations (POST is used for complex queries)
-		if strings.Contains(path, "/_search") {
-			return "search"
-		}
-		// Count operations
-		if strings.Contains(path, "/_count") {
-			return "search"
-		}
-		// Refresh, flush, and other index maintenance operations
-		if strings.Contains(path, "/_refresh") ||
-			strings.Contains(path, "/_flush") ||
-			strings.Contains(path, "/_forcemerge") {
-			return "maintenance"
-		}
+	if requestType, ok := classifyPostRequest(r.URL.Path, r.Method); ok {
+		return requestType
 	}
 
 	switch r.Method {
-	case "GET", "HEAD":
-		return "read"
-	case "POST", "PUT":
-		return "write"
-	case "DELETE":
-		return "delete"
+	case http.MethodGet, http.MethodHead:
+		return requestTypeRead
+	case http.MethodPost, http.MethodPut:
+		return requestTypeWrite
+	case http.MethodDelete:
+		return requestTypeDelete
 	default:
-		return "other"
+		return requestTypeOther
 	}
 }
 
-// Health returns a health check handler
+func classifyPostRequest(path string, method string) (string, bool) {
+	if method != http.MethodPost {
+		return "", false
+	}
+
+	if isSearchPath(path) {
+		return requestTypeSearch, true
+	}
+
+	if isMaintenancePath(path) {
+		return requestTypeMaint, true
+	}
+
+	return "", false
+}
+
+func isSearchPath(path string) bool {
+	return strings.Contains(path, "/_search") || strings.Contains(path, "/_count")
+}
+
+func isMaintenancePath(path string) bool {
+	return strings.Contains(path, "/_refresh") ||
+		strings.Contains(path, "/_flush") ||
+		strings.Contains(path, "/_forcemerge")
+}
+
+// Health returns a health check handler.
 func Health() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(contentTypeHeader, contentTypeJSON)
@@ -171,7 +191,7 @@ func Health() http.HandlerFunc {
 	}
 }
 
-// Ready returns a readiness check handler
+// Ready returns a readiness check handler.
 func Ready() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(contentTypeHeader, contentTypeJSON)

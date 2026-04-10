@@ -31,8 +31,20 @@ func TestNew(t *testing.T) {
 		t.Error("BulkFailuresTotal not initialized")
 	}
 
+	if m.BulkRequeuesTotal == nil {
+		t.Error("BulkRequeuesTotal not initialized")
+	}
+
 	if m.BufferSizeBytes == nil {
 		t.Error("BufferSizeBytes not initialized")
+	}
+
+	if m.BufferInFlightBytes == nil {
+		t.Error("BufferInFlightBytes not initialized")
+	}
+
+	if m.BufferInFlightRequests == nil {
+		t.Error("BufferInFlightRequests not initialized")
 	}
 
 	if m.ProxyLatency == nil {
@@ -182,6 +194,40 @@ func TestMetrics_BufferSizeBytes_Add(t *testing.T) {
 	}
 }
 
+func TestMetrics_BulkRequeuesTotal(t *testing.T) {
+	m := globalMetrics
+	requeueMetric := m.BulkRequeuesTotal.WithLabelValues("/_bulk")
+
+	initial := testutil.ToFloat64(requeueMetric)
+	requeueMetric.Inc()
+	requeueMetric.Inc()
+
+	count := testutil.ToFloat64(requeueMetric)
+	if count != initial+2 {
+		t.Errorf("BulkRequeuesTotal = %f, want %f", count, initial+2)
+	}
+}
+
+func TestMetrics_BufferInFlightBytes(t *testing.T) {
+	m := globalMetrics
+	inFlightMetric := m.BufferInFlightBytes.WithLabelValues("/_bulk")
+
+	inFlightMetric.Set(512)
+	if testutil.ToFloat64(inFlightMetric) != 512 {
+		t.Errorf("BufferInFlightBytes = %f, want 512", testutil.ToFloat64(inFlightMetric))
+	}
+}
+
+func TestMetrics_BufferInFlightRequests(t *testing.T) {
+	m := globalMetrics
+	inFlightMetric := m.BufferInFlightRequests.WithLabelValues("/_bulk")
+
+	inFlightMetric.Set(3)
+	if testutil.ToFloat64(inFlightMetric) != 3 {
+		t.Errorf("BufferInFlightRequests = %f, want 3", testutil.ToFloat64(inFlightMetric))
+	}
+}
+
 func TestMetrics_ProxyLatency(t *testing.T) {
 	m := globalMetrics
 
@@ -235,7 +281,10 @@ func TestMetrics_ConcurrentAccess(t *testing.T) {
 			for j := 0; j < 100; j++ {
 				m.RequestsTotal.WithLabelValues("bulk", "POST").Inc()
 				m.BulkBatchesTotal.Inc()
+				m.BulkRequeuesTotal.WithLabelValues("/_bulk").Inc()
 				m.BufferSizeBytes.WithLabelValues("/_bulk").Set(float64(j))
+				m.BufferInFlightBytes.WithLabelValues("/_bulk").Set(float64(j / 2))
+				m.BufferInFlightRequests.WithLabelValues("/_bulk").Set(float64(j % 5))
 				m.ProxyLatency.WithLabelValues("bulk", "POST").Observe(0.001)
 			}
 			done <- true
@@ -286,9 +335,24 @@ func TestMetrics_MetricNames(t *testing.T) {
 			wantName:   "es_proxy_bulk_failures_total",
 		},
 		{
+			name:       "BulkRequeuesTotal",
+			metricFunc: func() prometheus.Collector { return m.BulkRequeuesTotal.WithLabelValues("/_bulk") },
+			wantName:   "es_proxy_bulk_requeues_total",
+		},
+		{
 			name:       "BufferSizeBytes",
 			metricFunc: func() prometheus.Collector { return m.BufferSizeBytes.WithLabelValues("/_bulk") },
 			wantName:   "es_proxy_buffer_size_bytes",
+		},
+		{
+			name:       "BufferInFlightBytes",
+			metricFunc: func() prometheus.Collector { return m.BufferInFlightBytes.WithLabelValues("/_bulk") },
+			wantName:   "es_proxy_buffer_in_flight_bytes",
+		},
+		{
+			name:       "BufferInFlightRequests",
+			metricFunc: func() prometheus.Collector { return m.BufferInFlightRequests.WithLabelValues("/_bulk") },
+			wantName:   "es_proxy_buffer_in_flight_requests",
 		},
 		{
 			name:       "ProxyLatency",
@@ -364,9 +428,17 @@ func TestMetrics_ZeroValues(t *testing.T) {
 
 	// Test that zero observations/increments work correctly
 	m.BufferSizeBytes.WithLabelValues("/_bulk").Set(0)
+	m.BufferInFlightBytes.WithLabelValues("/_bulk").Set(0)
+	m.BufferInFlightRequests.WithLabelValues("/_bulk").Set(0)
 	m.ProxyLatency.WithLabelValues("test", "TEST").Observe(0)
 
 	if testutil.ToFloat64(m.BufferSizeBytes.WithLabelValues("/_bulk")) != 0 {
 		t.Errorf("BufferSizeBytes should be 0")
+	}
+	if testutil.ToFloat64(m.BufferInFlightBytes.WithLabelValues("/_bulk")) != 0 {
+		t.Errorf("BufferInFlightBytes should be 0")
+	}
+	if testutil.ToFloat64(m.BufferInFlightRequests.WithLabelValues("/_bulk")) != 0 {
+		t.Errorf("BufferInFlightRequests should be 0")
 	}
 }
