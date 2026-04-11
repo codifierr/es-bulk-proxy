@@ -12,7 +12,7 @@ Built following Go best practices with the [Standard Go Project Layout](https://
 - **Smart Bulk Aggregation**: Automatically aggregates `/_bulk` requests in memory with per-index buffers
 - **Transparent Proxying**: All non-bulk requests pass through unchanged
 - **Intelligent Request Classification**: Distinguishes between bulk writes, searches, reads, maintenance, and other operations
-- **Time-based Flushing**: Configurable flush intervals (default: 3s)
+- **Time-based Flushing**: Configurable flush intervals (default: 30s)
 - **Size-based Flushing**: Automatic flush on size threshold (default: 5MB)
 - **Backpressure Handling**: Returns HTTP 429 when buffer is full
 - **Retry Logic**: Exponential backoff for failed bulk sends
