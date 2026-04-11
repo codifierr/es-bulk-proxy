@@ -412,9 +412,12 @@ func TestIndexBuffer_SendWithRetry_Success(t *testing.T) {
 	}
 
 	data := []byte(`{"index":{}}\n{"field":"value"}\n`)
-	err := buf.sendWithRetry(data)
+	attemptType, err := buf.sendWithRetry(data)
 	if err != nil {
 		t.Errorf("sendWithRetry() failed: %v", err)
+	}
+	if attemptType != "first_attempt" {
+		t.Errorf("Expected attempt_type='first_attempt', got '%s'", attemptType)
 	}
 }
 
@@ -448,9 +451,12 @@ func TestIndexBuffer_SendWithRetry_Failure(t *testing.T) {
 	}
 
 	data := []byte(`{"index":{}}\n{"field":"value"}\n`)
-	err := buf.sendWithRetry(data)
+	attemptType, err := buf.sendWithRetry(data)
 	if err == nil {
 		t.Error("sendWithRetry() should return error on failures")
+	}
+	if attemptType != "" {
+		t.Errorf("Expected empty attempt_type on failure, got '%s'", attemptType)
 	}
 
 	// Should retry: initial attempt + 2 retries = 3 total

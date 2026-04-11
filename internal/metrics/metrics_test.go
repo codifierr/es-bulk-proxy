@@ -111,20 +111,24 @@ func TestMetrics_BulkBatchesTotal(t *testing.T) {
 	m := globalMetrics
 
 	// Initial value should be 0
-	initial := testutil.ToFloat64(m.BulkBatchesTotal)
+	initial := testutil.ToFloat64(m.BulkBatchesTotal.WithLabelValues("first_attempt"))
 	if initial != 0 {
-		t.Errorf("BulkBatchesTotal initial value = %f, want 0", initial)
+		t.Errorf("BulkBatchesTotal{first_attempt} initial value = %f, want 0", initial)
 	}
 
 	// Increment counter
-	m.BulkBatchesTotal.Inc()
-	m.BulkBatchesTotal.Inc()
-	m.BulkBatchesTotal.Inc()
+	m.BulkBatchesTotal.WithLabelValues("first_attempt").Inc()
+	m.BulkBatchesTotal.WithLabelValues("retry").Inc()
 
 	// Verify counter value
-	count := testutil.ToFloat64(m.BulkBatchesTotal)
-	if count != 3 {
-		t.Errorf("BulkBatchesTotal = %f, want 3", count)
+	count := testutil.ToFloat64(m.BulkBatchesTotal.WithLabelValues("first_attempt"))
+	if count != 1 {
+		t.Errorf("BulkBatchesTotal{first_attempt} = %f, want 1", count)
+	}
+
+	retryCount := testutil.ToFloat64(m.BulkBatchesTotal.WithLabelValues("retry"))
+	if retryCount != 1 {
+		t.Errorf("BulkBatchesTotal{retry} = %f, want 1", retryCount)
 	}
 }
 
@@ -270,7 +274,7 @@ func TestMetrics_ConcurrentAccess(t *testing.T) {
 
 	// Get initial counts
 	initialBulkCount := testutil.ToFloat64(m.RequestsTotal.WithLabelValues("bulk", "POST"))
-	initialBatchCount := testutil.ToFloat64(m.BulkBatchesTotal)
+	initialBatchCount := testutil.ToFloat64(m.BulkBatchesTotal.WithLabelValues("first_attempt"))
 
 	// Test concurrent access to metrics (should be thread-safe)
 	done := make(chan bool)
@@ -280,7 +284,7 @@ func TestMetrics_ConcurrentAccess(t *testing.T) {
 		go func() {
 			for j := 0; j < 100; j++ {
 				m.RequestsTotal.WithLabelValues("bulk", "POST").Inc()
-				m.BulkBatchesTotal.Inc()
+				m.BulkBatchesTotal.WithLabelValues("first_attempt").Inc()
 				m.BulkRequeuesTotal.WithLabelValues("/_bulk").Inc()
 				m.BufferSizeBytes.WithLabelValues("/_bulk").Set(float64(j))
 				m.BufferInFlightBytes.WithLabelValues("/_bulk").Set(float64(j / 2))
@@ -303,10 +307,10 @@ func TestMetrics_ConcurrentAccess(t *testing.T) {
 		t.Errorf("RequestsTotal{type=bulk,method=POST} = %f, want %f", bulkCount, expectedBulkCount)
 	}
 
-	batchCount := testutil.ToFloat64(m.BulkBatchesTotal)
+	batchCount := testutil.ToFloat64(m.BulkBatchesTotal.WithLabelValues("first_attempt"))
 	expectedBatchCount := initialBatchCount + 1000
 	if batchCount != expectedBatchCount {
-		t.Errorf("BulkBatchesTotal = %f, want %f", batchCount, expectedBatchCount)
+		t.Errorf("BulkBatchesTotal{first_attempt} = %f, want %f", batchCount, expectedBatchCount)
 	}
 }
 

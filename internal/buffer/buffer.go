@@ -213,6 +213,7 @@ func (ib *IndexBuffer) timedFlush() {
 
 // flush sends the buffer to Elasticsearch.
 func (ib *IndexBuffer) flush() {
+	flushStart := time.Now()
 	ib.mu.Lock()
 	if ib.size == 0 || ib.flushInFlight {
 		ib.mu.Unlock()
@@ -237,7 +238,7 @@ func (ib *IndexBuffer) flush() {
 	ib.mu.Unlock()
 
 	// Send with retry
-	err := ib.sendWithRetry(dataToSend)
+	attemptType, err := ib.sendWithRetry(dataToSend)
 	if err != nil {
 		ib.mu.Lock()
 		queuedData := ib.data
@@ -278,11 +279,14 @@ func (ib *IndexBuffer) flush() {
 		ib.mu.Unlock()
 
 		ib.logger.DebugFields("bulk sent successfully", map[string]any{
-			"size":      batchSize,
-			"requests":  requestCount,
-			"indexPath": ib.indexPath,
+			"size":         batchSize,
+			"requests":     requestCount,
+			"indexPath":    ib.indexPath,
+			"attempt_type": attemptType,
 		})
-		ib.metrics.BulkBatchesTotal.Inc()
+		ib.metrics.BulkBatchesTotal.WithLabelValues(attemptType).Inc()
+		ib.metrics.FlushDuration.WithLabelValues(ib.indexPath).Observe(time.Since(flushStart).Seconds())
+		ib.metrics.LastSuccessfulFlush.WithLabelValues(ib.indexPath).Set(float64(time.Now().Unix()))
 
 		if shouldFlushAgain {
 			go ib.flush()
@@ -291,7 +295,8 @@ func (ib *IndexBuffer) flush() {
 }
 
 // sendWithRetry sends data with exponential backoff retry.
-func (ib *IndexBuffer) sendWithRetry(data []byte) error {
+// Returns attempt type ("first_attempt" or "retry") and error.
+func (ib *IndexBuffer) sendWithRetry(data []byte) (string, error) {
 	var lastErr error
 
 	backoff := ib.config.Retry.BackoffMin
@@ -300,6 +305,7 @@ func (ib *IndexBuffer) sendWithRetry(data []byte) error {
 		if attempt > 0 {
 			time.Sleep(backoff)
 			backoff *= 2
+			ib.metrics.BulkRetriesTotal.WithLabelValues(ib.indexPath).Inc()
 			ib.logger.InfoFields("retrying bulk send", map[string]any{
 				"attempt":   attempt,
 				"backoff":   backoff.String(),
@@ -343,13 +349,16 @@ func (ib *IndexBuffer) sendWithRetry(data []byte) error {
 		}
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return nil
+			if attempt == 0 {
+				return "first_attempt", nil
+			}
+			return "retry", nil
 		}
 
 		lastErr = fmt.Errorf("ES returned status %d: %s", resp.StatusCode, string(body))
 	}
 
-	return lastErr
+	return "", lastErr
 }
 
 // Shutdown gracefully shuts down the buffer.
