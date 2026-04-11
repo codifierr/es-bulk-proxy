@@ -8,13 +8,17 @@ import (
 // Metrics holds all Prometheus metrics.
 type Metrics struct {
 	RequestsTotal          *prometheus.CounterVec
-	BulkBatchesTotal       prometheus.Counter
+	BulkBatchesTotal       *prometheus.CounterVec
 	BulkFailuresTotal      prometheus.Counter
+	BulkRetriesTotal       *prometheus.CounterVec
 	BulkRequeuesTotal      *prometheus.CounterVec
 	BufferSizeBytes        *prometheus.GaugeVec
 	BufferInFlightBytes    *prometheus.GaugeVec
 	BufferInFlightRequests *prometheus.GaugeVec
 	ProxyLatency           *prometheus.HistogramVec
+	FlushDuration          *prometheus.HistogramVec
+	DroppedBatchesTotal    *prometheus.CounterVec
+	LastSuccessfulFlush    *prometheus.GaugeVec
 }
 
 // New creates and registers all metrics.
@@ -27,17 +31,25 @@ func New() *Metrics {
 			},
 			[]string{"type", "method"},
 		),
-		BulkBatchesTotal: promauto.NewCounter(
+		BulkBatchesTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "es_proxy_bulk_batches_total",
-				Help: "Total number of bulk batches sent to Elasticsearch",
+				Help: "Total number of bulk batches sent to Elasticsearch by attempt type",
 			},
+			[]string{"attempt_type"},
 		),
 		BulkFailuresTotal: promauto.NewCounter(
 			prometheus.CounterOpts{
 				Name: "es_proxy_bulk_failures_total",
-				Help: "Total number of bulk batch send failures",
+				Help: "Total number of bulk batch send failures after all retries exhausted",
 			},
+		),
+		BulkRetriesTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "es_proxy_bulk_retries_total",
+				Help: "Total number of bulk batch retry attempts by index path",
+			},
+			[]string{"index_path"},
 		),
 		BulkRequeuesTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
@@ -74,6 +86,28 @@ func New() *Metrics {
 				Buckets: prometheus.DefBuckets,
 			},
 			[]string{"type", "method"},
+		),
+		FlushDuration: promauto.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "es_proxy_flush_duration_seconds",
+				Help:    "Duration of bulk batch flush operations by index path",
+				Buckets: prometheus.DefBuckets,
+			},
+			[]string{"index_path"},
+		),
+		DroppedBatchesTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "es_proxy_dropped_batches_total",
+				Help: "Total number of bulk batches dropped by index path",
+			},
+			[]string{"index_path"},
+		),
+		LastSuccessfulFlush: promauto.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "es_proxy_last_successful_flush_timestamp_seconds",
+				Help: "Unix timestamp of the last successful flush by index path",
+			},
+			[]string{"index_path"},
 		),
 	}
 }
