@@ -444,7 +444,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "(1 - (es_proxy_bulk_failures_total / (es_proxy_bulk_batches_total + es_proxy_bulk_failures_total))) * 100",
+          "expr": "(sum(es_proxy_bulk_batches_total) / (sum(es_proxy_bulk_batches_total) + es_proxy_bulk_failures_total)) * 100 or vector(100)",
           "legendFormat": "Success Rate",
           "range": true,
           "refId": "A"
