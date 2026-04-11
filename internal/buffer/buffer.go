@@ -214,6 +214,7 @@ func (ib *IndexBuffer) timedFlush() {
 // flush sends the buffer to Elasticsearch.
 func (ib *IndexBuffer) flush() {
 	flushStart := time.Now()
+
 	ib.mu.Lock()
 	if ib.size == 0 || ib.flushInFlight {
 		ib.mu.Unlock()
@@ -305,6 +306,7 @@ func (ib *IndexBuffer) sendWithRetry(data []byte) (string, error) {
 		if attempt > 0 {
 			time.Sleep(backoff)
 			backoff *= 2
+
 			ib.metrics.BulkRetriesTotal.WithLabelValues(ib.indexPath).Inc()
 			ib.logger.InfoFields("retrying bulk send", map[string]any{
 				"attempt":   attempt,
@@ -316,7 +318,6 @@ func (ib *IndexBuffer) sendWithRetry(data []byte) (string, error) {
 		// CRITICAL: Forward to same index path to preserve ES context
 		reqCtx, cancel := context.WithTimeout(context.Background(), esRequestTimeout)
 		req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, ib.config.Elasticsearch.URL+ib.indexPath, bytes.NewReader(data))
-
 		if err != nil {
 			cancel()
 
@@ -352,6 +353,7 @@ func (ib *IndexBuffer) sendWithRetry(data []byte) (string, error) {
 			if attempt == 0 {
 				return "first_attempt", nil
 			}
+
 			return "retry", nil
 		}
 
