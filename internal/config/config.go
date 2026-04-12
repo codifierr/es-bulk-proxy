@@ -21,6 +21,7 @@ type Config struct {
 	Elasticsearch ElasticsearchConfig
 	Buffer        BufferConfig
 	Retry         RetryConfig
+	Logger        LoggerConfig
 }
 
 // ServerConfig holds HTTP server configuration.
@@ -44,6 +45,18 @@ type BufferConfig struct {
 type RetryConfig struct {
 	Attempts   int
 	BackoffMin time.Duration
+}
+
+// LoggerConfig holds logger configuration.
+type LoggerConfig struct {
+	Syslog SyslogConfig
+}
+
+// SyslogConfig holds syslog configuration.
+type SyslogConfig struct {
+	Enabled bool
+	Network string // "udp", "tcp", etc.
+	Address string // "localhost:514"
 }
 
 // Load loads configuration from environment variables and config files.
@@ -140,6 +153,11 @@ func setDefaults(v *viper.Viper) {
 	// Retry defaults
 	v.SetDefault("retry.attempts", defaultRetryAttempts)
 	v.SetDefault("retry.backoffmin", "100ms")
+
+	// Logger defaults
+	v.SetDefault("logger.syslog.enabled", false)
+	v.SetDefault("logger.syslog.network", "udp")
+	v.SetDefault("logger.syslog.address", "localhost:514")
 }
 
 // bindEnvVars binds environment variables to config keys.
@@ -176,6 +194,21 @@ func bindEnvVars(v *viper.Viper) {
 	}
 
 	err = v.BindEnv("retry.backoffmin", "RETRY_BACKOFF_MIN")
+	if err != nil {
+		panic(fmt.Sprintf("failed to bind env variable: %v", err))
+	}
+
+	err = v.BindEnv("logger.syslog.enabled", "SYSLOG_ENABLED")
+	if err != nil {
+		panic(fmt.Sprintf("failed to bind env variable: %v", err))
+	}
+
+	err = v.BindEnv("logger.syslog.network", "SYSLOG_NETWORK")
+	if err != nil {
+		panic(fmt.Sprintf("failed to bind env variable: %v", err))
+	}
+
+	err = v.BindEnv("logger.syslog.address", "SYSLOG_ADDRESS")
 	if err != nil {
 		panic(fmt.Sprintf("failed to bind env variable: %v", err))
 	}

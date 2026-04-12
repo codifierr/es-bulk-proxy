@@ -23,3 +23,14 @@ retry:
 
   # Minimum backoff duration for retries
   backoffmin: "100ms"
+
+logger:
+  syslog:
+    # Enable syslog forwarding
+    enabled: false
+
+    # Syslog network protocol (udp, tcp)
+    network: "udp"
+
+    # Syslog server address (host:port)
+    address: "localhost:514"

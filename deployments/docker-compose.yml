@@ -31,12 +31,15 @@ services:
       dockerfile: Dockerfile
     container_name: es-bulk-proxy
     environment:
-      - ENVIRONMENT=production
+      - ENVIRONMENT=development
       - ES_URL=http://elasticsearch:9200
       - FLUSH_INTERVAL=3s
       - MAX_BATCH_SIZE=5242880      # 5MB
       - MAX_BUFFER_SIZE=52428800    # 50MB
       - PORT=8080
+      - SYSLOG_ENABLED=true
+      - SYSLOG_NETWORK=udp
+      - SYSLOG_ADDRESS=udp-server:8080
     ports:
       - "8080:8080"
     depends_on:
@@ -97,6 +100,15 @@ services:
       - es-network
     depends_on:
       - prometheus
+    restart: unless-stopped
+
+  udp-server:
+    image: ssingh3339/udp-server:latest
+    container_name: udp-server
+    ports:
+      - "8081:8080/udp"
+    networks:
+      - es-network
     restart: unless-stopped
 
 networks:

@@ -152,6 +152,8 @@ linters:
       allow-separated-leading-comment: false
       allow-cuddle-declarations: false
       force-err-cuddling: true
+    cyclop:
+      max-complexity: 12
   exclusions:
     generated: lax
     presets:

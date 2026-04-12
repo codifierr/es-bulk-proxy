@@ -8,11 +8,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/buffer"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/config"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/handler"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/logger"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/metrics"
+	"github.com/codifierr/es-bulk-proxy/internal/buffer"
+	"github.com/codifierr/es-bulk-proxy/internal/config"
+	"github.com/codifierr/es-bulk-proxy/internal/handler"
+	"github.com/codifierr/es-bulk-proxy/internal/logger"
+	"github.com/codifierr/es-bulk-proxy/internal/metrics"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -26,23 +26,26 @@ const (
 )
 
 func main() {
-	// Initialize logger
-	log := logger.New(isDevelopment())
-	log.SetGlobal()
-
-	log.InfoFields("starting elasticsearch proxy", map[string]interface{}{
-		"version": version,
-	})
-
-	// Load configuration
+	// Load configuration first (needed for logger)
 	cfg, err := config.Load()
 	if err != nil {
-		log.FatalFields("failed to load configuration", map[string]interface{}{
+		// Fallback to stdout if config fails
+		fallbackLog := logger.New(nil, true)
+		fallbackLog.SetGlobal()
+		fallbackLog.FatalFields("failed to load configuration", map[string]any{
 			"error": err.Error(),
 		})
 	}
 
-	log.InfoFields("configuration loaded", map[string]interface{}{
+	// Initialize logger
+	log := logger.New(&cfg.Logger, isDevelopment())
+	log.SetGlobal()
+
+	log.InfoFields("starting elasticsearch proxy", map[string]any{
+		"version": version,
+	})
+
+	log.InfoFields("configuration loaded", map[string]any{
 		"es_url":          cfg.Elasticsearch.URL,
 		"flush_interval":  cfg.Buffer.FlushInterval.String(),
 		"max_batch_size":  cfg.Buffer.MaxBatchSize,
@@ -106,7 +109,7 @@ func main() {
 		})
 	}
 
-	log.InfoFields("server stopped", map[string]interface{}{})
+	log.InfoFields("server stopped", map[string]any{})
 }
 
 // isDevelopment checks if running in development mode.

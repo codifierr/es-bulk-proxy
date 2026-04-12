@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/buffer"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/config"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/logger"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/metrics"
+	"github.com/codifierr/es-bulk-proxy/internal/buffer"
+	"github.com/codifierr/es-bulk-proxy/internal/config"
+	"github.com/codifierr/es-bulk-proxy/internal/logger"
+	"github.com/codifierr/es-bulk-proxy/internal/metrics"
 )
 
 const (
@@ -62,7 +62,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
 	// Log incoming requests for debugging
-	ph.logger.DebugFields("incoming request", map[string]interface{}{
+	ph.logger.DebugFields("incoming request", map[string]any{
 		"method": r.Method,
 		"path":   r.URL.Path,
 		"query":  r.URL.RawQuery,
@@ -74,7 +74,7 @@ func (ph *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		(r.URL.Path == "/_bulk" || strings.HasSuffix(r.URL.Path, "/_bulk"))
 
 	if isBulkRequest {
-		ph.logger.DebugFields("handling bulk request", map[string]interface{}{
+		ph.logger.DebugFields("handling bulk request", map[string]any{
 			"path":   r.URL.Path,
 			"method": r.Method,
 		})
@@ -97,7 +97,7 @@ func (ph *ProxyHandler) handleBulk(w http.ResponseWriter, r *http.Request) {
 	// Read body
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		ph.logger.ErrorFields("failed to read bulk body", map[string]interface{}{
+		ph.logger.ErrorFields("failed to read bulk body", map[string]any{
 			"error": err.Error(),
 		})
 		http.Error(w, "Failed to read request", http.StatusBadRequest)
@@ -108,7 +108,7 @@ func (ph *ProxyHandler) handleBulk(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		err := r.Body.Close()
 		if err != nil {
-			ph.logger.ErrorFields("failed to close request body", map[string]interface{}{
+			ph.logger.ErrorFields("failed to close request body", map[string]any{
 				"error": err.Error(),
 			})
 		}
@@ -122,7 +122,7 @@ func (ph *ProxyHandler) handleBulk(w http.ResponseWriter, r *http.Request) {
 	// Add to buffer with index path to preserve ES context
 	err = ph.bulkBuffer.Add(r.URL.Path, body)
 	if err != nil {
-		ph.logger.ErrorFields("failed to add to buffer", map[string]interface{}{
+		ph.logger.ErrorFields("failed to add to buffer", map[string]any{
 			"error":     err.Error(),
 			"size":      len(body),
 			"indexPath": r.URL.Path,

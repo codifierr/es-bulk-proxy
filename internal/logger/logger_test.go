@@ -11,7 +11,7 @@ import (
 )
 
 func TestNew_Development(t *testing.T) {
-	log := New(true)
+	log := New(nil, true)
 
 	if log == nil {
 		t.Fatal("New() returned nil")
@@ -23,7 +23,7 @@ func TestNew_Development(t *testing.T) {
 }
 
 func TestNew_Production(t *testing.T) {
-	log := New(false)
+	log := New(nil, false)
 
 	if log == nil {
 		t.Fatal("New() returned nil")
@@ -43,7 +43,7 @@ func TestLogger_InfoFields(t *testing.T) {
 		logger: &testLogger,
 	}
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"key1": "value1",
 		"key2": 42,
 		"key3": true,
@@ -57,7 +57,7 @@ func TestLogger_InfoFields(t *testing.T) {
 	}
 
 	// Verify JSON structure
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 		t.Fatalf("Failed to parse JSON log: %v", err)
 	}
@@ -91,14 +91,14 @@ func TestLogger_ErrorFields(t *testing.T) {
 		logger: &testLogger,
 	}
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"error": "something went wrong",
 		"code":  500,
 	}
 
 	log.ErrorFields("error occurred", fields)
 
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 		t.Fatalf("Failed to parse JSON log: %v", err)
 	}
@@ -120,13 +120,13 @@ func TestLogger_WarnFields(t *testing.T) {
 		logger: &testLogger,
 	}
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"warning": "potential issue",
 	}
 
 	log.WarnFields("warning message", fields)
 
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 		t.Fatalf("Failed to parse JSON log: %v", err)
 	}
@@ -149,13 +149,13 @@ func TestLogger_DebugFields(t *testing.T) {
 		logger: &testLogger,
 	}
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"debug_info": "detailed information",
 	}
 
 	log.DebugFields("debug message", fields)
 
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 		t.Fatalf("Failed to parse JSON log: %v", err)
 	}
@@ -178,9 +178,9 @@ func TestLogger_EmptyFields(t *testing.T) {
 	}
 
 	// Should not panic with empty fields
-	log.InfoFields("message with empty fields", map[string]interface{}{})
+	log.InfoFields("message with empty fields", map[string]any{})
 
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 		t.Fatalf("Failed to parse JSON log: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestLogger_NilFields(t *testing.T) {
 	// Should not panic with nil fields
 	log.InfoFields("message with nil fields", nil)
 
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 		t.Fatalf("Failed to parse JSON log: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestLogger_ComplexFields(t *testing.T) {
 		logger: &testLogger,
 	}
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"string": "text",
 		"int":    42,
 		"float":  3.14,
@@ -231,7 +231,7 @@ func TestLogger_ComplexFields(t *testing.T) {
 
 	log.InfoFields("complex fields", fields)
 
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 		t.Fatalf("Failed to parse JSON log: %v", err)
 	}
@@ -264,9 +264,9 @@ func TestLogger_With(t *testing.T) {
 	childLogger := ctx.Str("component", "test").Logger()
 	childLog := &Logger{logger: &childLogger}
 
-	childLog.InfoFields("child message", map[string]interface{}{"key": "value"})
+	childLog.InfoFields("child message", map[string]any{"key": "value"})
 
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 		t.Fatalf("Failed to parse JSON log: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestLogger_With(t *testing.T) {
 }
 
 func TestLogger_SetGlobal(t *testing.T) {
-	log := New(false)
+	log := New(nil, false)
 
 	// Should not panic
 	log.SetGlobal()
@@ -287,8 +287,8 @@ func TestLogger_SetGlobal(t *testing.T) {
 }
 
 func TestLogger_MultipleInstances(t *testing.T) {
-	log1 := New(true)
-	log2 := New(false)
+	log1 := New(nil, true)
+	log2 := New(nil, false)
 
 	if log1 == nil || log2 == nil {
 		t.Fatal("Failed to create logger instances")
@@ -313,7 +313,7 @@ func TestLogger_ConcurrentLogging(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			for j := 0; j < 100; j++ {
-				log.InfoFields("concurrent message", map[string]interface{}{
+				log.InfoFields("concurrent message", map[string]any{
 					"goroutine": id,
 					"iteration": j,
 				})
@@ -342,7 +342,7 @@ func TestLogger_SpecialCharacters(t *testing.T) {
 		logger: &testLogger,
 	}
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"special": "quotes\"and\\slashes/and<tags>",
 		"unicode": "こんにちは世界 🌍",
 		"newline": "line1\nline2",
@@ -350,7 +350,7 @@ func TestLogger_SpecialCharacters(t *testing.T) {
 
 	log.InfoFields("special characters", fields)
 
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 		t.Fatalf("Failed to parse JSON log with special characters: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestLogger_LargeFields(t *testing.T) {
 	}
 
 	// Create large field map
-	fields := make(map[string]interface{})
+	fields := make(map[string]any)
 	for i := 0; i < 100; i++ {
 		fields[string(rune('a'+i%26))+strconv.Itoa(i)] = strings.Repeat("x", 100)
 	}
@@ -395,7 +395,7 @@ func TestLogger_NumericFieldTypes(t *testing.T) {
 		logger: &testLogger,
 	}
 
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"int":     int(42),
 		"int8":    int8(8),
 		"int16":   int16(16),
@@ -412,7 +412,7 @@ func TestLogger_NumericFieldTypes(t *testing.T) {
 
 	log.InfoFields("numeric types", fields)
 
-	var logEntry map[string]interface{}
+	var logEntry map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
 		t.Fatalf("Failed to parse JSON log: %v", err)
 	}
