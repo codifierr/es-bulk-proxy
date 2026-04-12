@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/config"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/logger"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/metrics"
+	"github.com/codifierr/es-bulk-proxy/internal/config"
+	"github.com/codifierr/es-bulk-proxy/internal/logger"
+	"github.com/codifierr/es-bulk-proxy/internal/metrics"
 )
 
 const (

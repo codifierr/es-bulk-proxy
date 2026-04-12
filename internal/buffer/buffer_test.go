@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/config"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/logger"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/metrics"
+	"github.com/codifierr/es-bulk-proxy/internal/config"
+	"github.com/codifierr/es-bulk-proxy/internal/logger"
+	"github.com/codifierr/es-bulk-proxy/internal/metrics"
 )
 
 // Use a shared metrics instance to avoid Prometheus registration conflicts
@@ -23,7 +23,11 @@ func TestNewManager(t *testing.T) {
 			MaxBufferSize: 10240,
 		},
 	}
-	log := logger.New(true)
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+	log := logger.New(&cfg.Logger, true)
 	m := testMetrics
 
 	manager := NewManager(cfg, log, m)
@@ -50,7 +54,7 @@ func TestNewManager_UsesSharedHTTPClient(t *testing.T) {
 			MaxBufferSize: 10240,
 		},
 	}
-	manager := NewManager(cfg, logger.New(true), testMetrics)
+	manager := NewManager(cfg, logger.New(&cfg.Logger, true), testMetrics)
 
 	first := manager.getOrCreateBuffer("/_bulk")
 	second := manager.getOrCreateBuffer("/index/_bulk")
@@ -113,7 +117,7 @@ func TestBufferManager_Add(t *testing.T) {
 					MaxBufferSize: 10 * 1024 * 1024,
 				},
 			}
-			log := logger.New(true)
+			log := logger.New(nil, true)
 			m := testMetrics
 			manager := NewManager(cfg, log, m)
 
@@ -133,7 +137,7 @@ func TestBufferManager_Add_BufferFull(t *testing.T) {
 			MaxBufferSize: 100, // Very small buffer
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	manager := NewManager(cfg, log, m)
 
@@ -160,7 +164,7 @@ func TestBufferManager_MultipleIndices(t *testing.T) {
 			MaxBufferSize: 10240,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	manager := NewManager(cfg, log, m)
 
@@ -189,7 +193,7 @@ func TestBufferManager_ConcurrentAdd(t *testing.T) {
 			MaxBufferSize: 10 * 1024 * 1024,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	manager := NewManager(cfg, log, m)
 
@@ -223,7 +227,7 @@ func TestIndexBuffer_Add(t *testing.T) {
 			MaxBufferSize: 10240,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 
 	buf := &IndexBuffer{
@@ -295,7 +299,7 @@ func TestIndexBuffer_FlushOnSizeThreshold(t *testing.T) {
 			BackoffMin: 100 * time.Millisecond,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 
 	buf := &IndexBuffer{
@@ -349,7 +353,7 @@ func TestIndexBuffer_TimedFlush(t *testing.T) {
 			BackoffMin: 100 * time.Millisecond,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 
 	buf := &IndexBuffer{
@@ -400,7 +404,7 @@ func TestIndexBuffer_SendWithRetry_Success(t *testing.T) {
 			BackoffMin: 10 * time.Millisecond,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 
 	buf := &IndexBuffer{
@@ -439,7 +443,7 @@ func TestIndexBuffer_SendWithRetry_Failure(t *testing.T) {
 			BackoffMin: 10 * time.Millisecond,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 
 	buf := &IndexBuffer{
@@ -493,7 +497,7 @@ func TestIndexBuffer_FlushFailureRequeuesData(t *testing.T) {
 		data:      []byte("failed batch\n"),
 		size:      int64(len("failed batch\n")),
 		config:    cfg,
-		logger:    logger.New(true),
+		logger:    logger.New(nil, true),
 		metrics:   testMetrics,
 		esClient:  newESHTTPClient(),
 		lastFlush: time.Now(),
@@ -530,7 +534,7 @@ func TestIndexBuffer_AddCountsInFlightBytesAgainstCapacity(t *testing.T) {
 	buf := &IndexBuffer{
 		indexPath:     "/_bulk",
 		config:        cfg,
-		logger:        logger.New(true),
+		logger:        logger.New(nil, true),
 		metrics:       testMetrics,
 		esClient:      newESHTTPClient(),
 		inFlightData:  make([]byte, 90),
@@ -570,7 +574,7 @@ func TestIndexBuffer_Shutdown(t *testing.T) {
 			BackoffMin: 10 * time.Millisecond,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 
 	buf := &IndexBuffer{
@@ -614,7 +618,7 @@ func TestBufferManager_Shutdown(t *testing.T) {
 			BackoffMin: 10 * time.Millisecond,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	manager := NewManager(cfg, log, m)
 
@@ -637,7 +641,7 @@ func TestIndexBuffer_EmptyFlush(t *testing.T) {
 			MaxBufferSize: 10240,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 
 	buf := &IndexBuffer{

@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/buffer"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/config"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/logger"
-	"github.com/codifierr/go-scratchpad/es-bulk-proxy/internal/metrics"
+	"github.com/codifierr/es-bulk-proxy/internal/buffer"
+	"github.com/codifierr/es-bulk-proxy/internal/config"
+	"github.com/codifierr/es-bulk-proxy/internal/logger"
+	"github.com/codifierr/es-bulk-proxy/internal/metrics"
 )
 
 // Use a shared metrics instance to avoid Prometheus registration conflicts
@@ -29,7 +29,7 @@ func TestNew(t *testing.T) {
 			MaxBufferSize: 10240,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	bb := buffer.NewManager(cfg, log, m)
 
@@ -70,7 +70,7 @@ func TestProxyHandler_ServeHTTP_BulkRequest(t *testing.T) {
 			BackoffMin: 100 * time.Millisecond,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	bb := buffer.NewManager(cfg, log, m)
 	handler := New(cfg, bb, log, m)
@@ -157,7 +157,7 @@ func TestProxyHandler_ServeHTTP_ProxyRequests(t *testing.T) {
 			MaxBufferSize: 10240,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	bb := buffer.NewManager(cfg, log, m)
 	handler := New(cfg, bb, log, m)
@@ -241,7 +241,7 @@ func TestProxyHandler_HandleBulk_BufferFull(t *testing.T) {
 			MaxBufferSize: 50, // Very small buffer
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	bb := buffer.NewManager(cfg, log, m)
 	handler := New(cfg, bb, log, m)
@@ -275,7 +275,7 @@ func TestProxyHandler_HandleBulk_ReadError(t *testing.T) {
 			MaxBufferSize: 10240,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	bb := buffer.NewManager(cfg, log, m)
 	handler := New(cfg, bb, log, m)
@@ -297,16 +297,16 @@ func TestProxyHandler_ClassifyRequest(t *testing.T) {
 			URL: "http://localhost:9200",
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	bb := buffer.NewManager(cfg, log, m)
 	handler := New(cfg, bb, log, m)
 
 	tests := []struct {
-		name       string
-		method     string
-		path       string
-		wantType   string
+		name     string
+		method   string
+		path     string
+		wantType string
 	}{
 		{
 			name:     "search with GET",
@@ -455,7 +455,7 @@ func TestProxyHandler_HandleBulk_NewlineAppending(t *testing.T) {
 			MaxBufferSize: 10240,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	bb := buffer.NewManager(cfg, log, m)
 	handler := New(cfg, bb, log, m)
@@ -490,7 +490,7 @@ func TestProxyHandler_HandleBulk_EmptyBody(t *testing.T) {
 			MaxBufferSize: 10240,
 		},
 	}
-	log := logger.New(true)
+	log := logger.New(nil, true)
 	m := testMetrics
 	bb := buffer.NewManager(cfg, log, m)
 	handler := New(cfg, bb, log, m)

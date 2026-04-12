@@ -46,3 +46,4 @@ tmp/
 temp/
 dist/es-bulk-proxy-latest-multiarch.tar
 es-bulk-proxy
+main
