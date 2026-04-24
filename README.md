@@ -10,9 +10,10 @@ Built following Go best practices with the [Standard Go Project Layout](https://
 ## ✨ Features
 
 - **Smart Bulk Aggregation**: Automatically aggregates `/_bulk` requests in memory with per-index buffers
+- **Client Authentication Forwarding**: Captures and forwards client-specific auth headers (Bearer, Basic, API Keys)
 - **Transparent Proxying**: All non-bulk requests pass through unchanged
 - **Intelligent Request Classification**: Distinguishes between bulk writes, searches, reads, maintenance, and other operations
-- **Time-based Flushing**: Configurable flush intervals (default: 30s)
+- **Time-based Flushing**: Configurable flush intervals (default: 60s)
 - **Size-based Flushing**: Automatic flush on size threshold (default: 5MB)
 - **Backpressure Handling**: Returns HTTP 429 when buffer is full
 - **Retry Logic**: Exponential backoff for failed bulk sends
@@ -253,6 +254,51 @@ curl http://localhost:8080/_cluster/health
 # Index operations
 curl -X PUT http://localhost:8080/myindex
 ```
+
+## 🔐 Authentication Support
+
+The proxy supports forwarding client authentication to Elasticsearch. All authentication headers from client requests are captured and forwarded with buffered bulk requests.
+
+### Supported Authentication Methods
+
+1. **Bearer Token Authentication**
+
+```bash
+curl -X POST http://localhost:8080/_bulk \
+  -H "Content-Type: application/x-ndjson" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -d '{"index":{"_index":"myindex"}}
+{"message":"authenticated request"}'
+```
+
+1. **Basic Authentication**
+
+```bash
+curl -X POST http://localhost:8080/_bulk \
+  -H "Content-Type: application/x-ndjson" \
+  -H "Authorization: Basic ZWxhc3RpYzpjaGFuZ2VtZQ==" \
+  -d '{"index":{"_index":"myindex"}}
+{"message":"basic auth request"}'
+```
+
+1. **Elasticsearch API Key**
+
+```bash
+curl -X POST http://localhost:8080/_bulk \
+  -H "Content-Type: application/x-ndjson" \
+  -H "X-Elastic-Api-Key: VnVhQ2ZHY0JDZGJrUW0tZTVoT3k6..." \
+  -d '{"index":{"_index":"myindex"}}
+{"message":"api key request"}'
+```
+
+### How It Works
+
+- **Bulk Requests**: Auth headers from the first request in each batch are captured and forwarded when the buffer flushes
+- **Non-Bulk Requests**: Auth headers are proxied immediately (transparent pass-through)
+- **Per-Batch Authentication**: Each buffer flush uses the authentication from the first request in that batch
+- **Retry Safety**: Authentication headers are preserved during retry attempts
+
+For detailed information, see [AUTHENTICATION.md](AUTHENTICATION.md).
 
 ### Health & Metrics
 
