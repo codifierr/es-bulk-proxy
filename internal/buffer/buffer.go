@@ -43,6 +43,7 @@ type IndexBuffer struct {
 	indexPath     string // e.g., "/my-index/_bulk" or "/_bulk"
 	data          []byte
 	size          int64
+	authHeaders   http.Header // Authentication headers from the first request
 	inFlightData  []byte
 	inFlightSize  int64
 	config        *config.Config
@@ -129,10 +130,10 @@ func (bm *BufferManager) getOrCreateBuffer(indexPath string) *IndexBuffer {
 }
 
 // Add appends data to the appropriate index buffer.
-func (bm *BufferManager) Add(indexPath string, data []byte) error {
+func (bm *BufferManager) Add(indexPath string, data []byte, headers http.Header) error {
 	buf := bm.getOrCreateBuffer(indexPath)
 
-	return buf.Add(data)
+	return buf.Add(data, headers)
 }
 
 // Shutdown gracefully shuts down all buffers.
@@ -160,13 +161,19 @@ func (ib *IndexBuffer) updateBufferMetricLocked() {
 }
 
 // Add appends data to the buffer.
-func (ib *IndexBuffer) Add(data []byte) error {
+func (ib *IndexBuffer) Add(data []byte, headers http.Header) error {
 	ib.mu.Lock()
 	defer ib.mu.Unlock()
 
 	// Check if adding this would exceed max buffer size
 	if ib.occupiedSizeLocked()+int64(len(data)) > ib.config.Buffer.MaxBufferSize {
 		return fmt.Errorf("buffer full: max size %d bytes", ib.config.Buffer.MaxBufferSize)
+	}
+
+	// Store auth headers from the first request in this batch
+	// All requests in a batch will use the same authentication
+	if ib.authHeaders == nil && headers != nil {
+		ib.authHeaders = headers.Clone()
 	}
 
 	ib.data = append(ib.data, data...)
@@ -254,6 +261,7 @@ func (ib *IndexBuffer) flush() {
 		ib.inFlightSize = 0
 		ib.inFlightReqs = 0
 		ib.flushInFlight = false
+		// Keep authHeaders for retry
 		ib.updateBufferMetricLocked()
 		ib.mu.Unlock()
 
@@ -274,6 +282,7 @@ func (ib *IndexBuffer) flush() {
 		ib.inFlightSize = 0
 		ib.inFlightReqs = 0
 		ib.flushInFlight = false
+		ib.authHeaders = nil // Clear auth headers after successful flush
 		ib.lastFlush = time.Now()
 		ib.updateBufferMetricLocked()
 		shouldFlushAgain = ib.size >= ib.config.Buffer.MaxBatchSize
@@ -327,6 +336,15 @@ func (ib *IndexBuffer) sendWithRetry(data []byte) (string, error) {
 		}
 
 		req.Header.Set("Content-Type", "application/x-ndjson")
+
+		// Forward authentication headers from the original client request
+		if ib.authHeaders != nil {
+			for key, values := range ib.authHeaders {
+				for _, value := range values {
+					req.Header.Add(key, value)
+				}
+			}
+		}
 
 		resp, err := ib.esClient.Do(req)
 		if err != nil {
