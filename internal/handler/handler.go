@@ -119,8 +119,22 @@ func (ph *ProxyHandler) handleBulk(w http.ResponseWriter, r *http.Request) {
 		body = append(body, '\n')
 	}
 
+	// Capture authentication headers to forward with buffered requests
+	authHeaders := make(http.Header)
+	if auth := r.Header.Get("Authorization"); auth != "" {
+		authHeaders.Set("Authorization", auth)
+	}
+	// Elasticsearch API Key authentication
+	if apiKey := r.Header.Get("X-Elastic-Api-Key"); apiKey != "" {
+		authHeaders.Set("X-Elastic-Api-Key", apiKey)
+	}
+	// Basic authentication (alternative header format)
+	if apiKeyId := r.Header.Get("ApiKey"); apiKeyId != "" {
+		authHeaders.Set("ApiKey", apiKeyId)
+	}
+
 	// Add to buffer with index path to preserve ES context
-	err = ph.bulkBuffer.Add(r.URL.Path, body)
+	err = ph.bulkBuffer.Add(r.URL.Path, body, authHeaders)
 	if err != nil {
 		ph.logger.ErrorFields("failed to add to buffer", map[string]any{
 			"error":     err.Error(),

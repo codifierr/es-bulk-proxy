@@ -1,6 +1,7 @@
 package buffer
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -121,7 +122,7 @@ func TestBufferManager_Add(t *testing.T) {
 			m := testMetrics
 			manager := NewManager(cfg, log, m)
 
-			err := manager.Add(tt.indexPath, tt.data)
+			err := manager.Add(tt.indexPath, tt.data, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Add() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -143,14 +144,14 @@ func TestBufferManager_Add_BufferFull(t *testing.T) {
 
 	// First add should succeed
 	smallData := []byte("small")
-	err := manager.Add("/_bulk", smallData)
+	err := manager.Add("/_bulk", smallData, nil)
 	if err != nil {
 		t.Errorf("First Add() failed: %v", err)
 	}
 
 	// Second add should exceed buffer
 	largeData := make([]byte, 200)
-	err = manager.Add("/_bulk", largeData)
+	err = manager.Add("/_bulk", largeData, nil)
 	if err == nil {
 		t.Error("Add() should return error when buffer is full")
 	}
@@ -171,7 +172,7 @@ func TestBufferManager_MultipleIndices(t *testing.T) {
 	// Add to different indices
 	indices := []string{"/_bulk", "/index1/_bulk", "/index2/_bulk"}
 	for _, idx := range indices {
-		err := manager.Add(idx, []byte("data\n"))
+		err := manager.Add(idx, []byte("data\n"), nil)
 		if err != nil {
 			t.Errorf("Add() to %s failed: %v", idx, err)
 		}
@@ -208,7 +209,7 @@ func TestBufferManager_ConcurrentAdd(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < addsPerGoroutine; j++ {
 				data := []byte(`{"index":{}}\n{"field":"value"}\n`)
-				err := manager.Add("/_bulk", data)
+				err := manager.Add("/_bulk", data, nil)
 				if err != nil {
 					t.Logf("Add failed in goroutine %d: %v", id, err)
 				}
@@ -261,7 +262,7 @@ func TestIndexBuffer_Add(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := buf.Add(tt.data)
+			err := buf.Add(tt.data, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Add() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -316,7 +317,7 @@ func TestIndexBuffer_FlushOnSizeThreshold(t *testing.T) {
 
 	// Add data exceeding threshold
 	largeData := make([]byte, 150)
-	err := buf.Add(largeData)
+	err := buf.Add(largeData, nil)
 	if err != nil {
 		t.Fatalf("Add() failed: %v", err)
 	}
@@ -369,7 +370,7 @@ func TestIndexBuffer_TimedFlush(t *testing.T) {
 	defer buf.flushTimer.Stop()
 
 	// Add small data
-	err := buf.Add([]byte("small data\n"))
+	err := buf.Add([]byte("small data\n"), nil)
 	if err != nil {
 		t.Fatalf("Add() failed: %v", err)
 	}
@@ -544,11 +545,11 @@ func TestIndexBuffer_AddCountsInFlightBytesAgainstCapacity(t *testing.T) {
 		lastFlush:     time.Now(),
 	}
 
-	if err := buf.Add(make([]byte, 10)); err != nil {
+	if err := buf.Add(make([]byte, 10), nil); err != nil {
 		t.Fatalf("Add() should allow data within remaining capacity: %v", err)
 	}
 
-	if err := buf.Add([]byte("x")); err == nil {
+	if err := buf.Add([]byte("x"), nil); err == nil {
 		t.Fatal("Add() should reject writes once queued plus in-flight bytes exceed max buffer size")
 	}
 }
@@ -623,8 +624,8 @@ func TestBufferManager_Shutdown(t *testing.T) {
 	manager := NewManager(cfg, log, m)
 
 	// Add data to multiple buffers
-	_ = manager.Add("/_bulk", []byte("data1\n"))
-	_ = manager.Add("/index1/_bulk", []byte("data2\n"))
+	_ = manager.Add("/_bulk", []byte("data1\n"), nil)
+	_ = manager.Add("/index1/_bulk", []byte("data2\n"), nil)
 
 	// Shutdown should flush all buffers
 	manager.Shutdown()
@@ -659,5 +660,307 @@ func TestIndexBuffer_EmptyFlush(t *testing.T) {
 
 	if buf.size != 0 {
 		t.Error("Empty flush should not change size")
+	}
+}
+
+func TestIndexBuffer_ForwardsAuthenticationHeaders(t *testing.T) {
+	// Track received headers
+	var receivedAuth string
+	var receivedApiKey string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		receivedApiKey = r.Header.Get("X-Elastic-Api-Key")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"errors":false}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		Elasticsearch: config.ElasticsearchConfig{
+			URL: ts.URL,
+		},
+		Buffer: config.BufferConfig{
+			FlushInterval: 10 * time.Second,
+			MaxBatchSize:  100, // Small threshold to trigger flush
+			MaxBufferSize: 10240,
+		},
+		Retry: config.RetryConfig{
+			Attempts:   1,
+			BackoffMin: 100 * time.Millisecond,
+		},
+	}
+	log := logger.New(nil, true)
+	m := testMetrics
+
+	buf := &IndexBuffer{
+		indexPath: "/_bulk",
+		data:      make([]byte, 0, 1024),
+		config:    cfg,
+		logger:    log,
+		metrics:   m,
+		esClient:  newESHTTPClient(),
+		lastFlush: time.Now(),
+	}
+	buf.flushTimer = time.AfterFunc(cfg.Buffer.FlushInterval, buf.timedFlush)
+	defer buf.flushTimer.Stop()
+
+	// Create headers with authentication
+	authHeaders := make(http.Header)
+	authHeaders.Set("Authorization", "Bearer test-token-123")
+	authHeaders.Set("X-Elastic-Api-Key", "api-key-456")
+
+	// Add data with auth headers
+	largeData := make([]byte, 150) // Exceeds MaxBatchSize to trigger flush
+	err := buf.Add(largeData, authHeaders)
+	if err != nil {
+		t.Fatalf("Add() failed: %v", err)
+	}
+
+	// Wait for async flush
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify headers were forwarded
+	if receivedAuth != "Bearer test-token-123" {
+		t.Errorf("Authorization header not forwarded correctly. Got: %s, Want: Bearer test-token-123", receivedAuth)
+	}
+	if receivedApiKey != "api-key-456" {
+		t.Errorf("X-Elastic-Api-Key header not forwarded correctly. Got: %s, Want: api-key-456", receivedApiKey)
+	}
+}
+
+func TestIndexBuffer_UsesFirstRequestAuthHeaders(t *testing.T) {
+	// Track received headers
+	var receivedAuth string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"errors":false}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		Elasticsearch: config.ElasticsearchConfig{
+			URL: ts.URL,
+		},
+		Buffer: config.BufferConfig{
+			FlushInterval: 10 * time.Second,
+			MaxBatchSize:  200,
+			MaxBufferSize: 10240,
+		},
+		Retry: config.RetryConfig{
+			Attempts:   1,
+			BackoffMin: 100 * time.Millisecond,
+		},
+	}
+
+	buf := &IndexBuffer{
+		indexPath: "/_bulk",
+		data:      make([]byte, 0, 1024),
+		config:    cfg,
+		logger:    logger.New(nil, true),
+		metrics:   testMetrics,
+		esClient:  newESHTTPClient(),
+		lastFlush: time.Now(),
+	}
+
+	// First request with auth
+	firstHeaders := make(http.Header)
+	firstHeaders.Set("Authorization", "Bearer first-token")
+	err := buf.Add([]byte("first data\n"), firstHeaders)
+	if err != nil {
+		t.Fatalf("First Add() failed: %v", err)
+	}
+
+	// Second request with different auth (should be ignored)
+	secondHeaders := make(http.Header)
+	secondHeaders.Set("Authorization", "Bearer second-token")
+	err = buf.Add([]byte("second data\n"), secondHeaders)
+	if err != nil {
+		t.Fatalf("Second Add() failed: %v", err)
+	}
+
+	// Trigger manual flush
+	buf.flush()
+
+	// Wait for flush to complete
+	time.Sleep(200 * time.Millisecond)
+
+	// Should use the first request's auth
+	if receivedAuth != "Bearer first-token" {
+		t.Errorf("Should use first request's auth. Got: %s, Want: Bearer first-token", receivedAuth)
+	}
+}
+
+func TestIndexBuffer_ClearsAuthHeadersAfterSuccessfulFlush(t *testing.T) {
+	callCount := 0
+	var firstAuth, secondAuth string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			firstAuth = r.Header.Get("Authorization")
+		} else if callCount == 2 {
+			secondAuth = r.Header.Get("Authorization")
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"errors":false}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		Elasticsearch: config.ElasticsearchConfig{
+			URL: ts.URL,
+		},
+		Buffer: config.BufferConfig{
+			FlushInterval: 10 * time.Second,
+			MaxBatchSize:  50,
+			MaxBufferSize: 10240,
+		},
+		Retry: config.RetryConfig{
+			Attempts:   1,
+			BackoffMin: 100 * time.Millisecond,
+		},
+	}
+
+	buf := &IndexBuffer{
+		indexPath: "/_bulk",
+		data:      make([]byte, 0, 1024),
+		config:    cfg,
+		logger:    logger.New(nil, true),
+		metrics:   testMetrics,
+		esClient:  newESHTTPClient(),
+		lastFlush: time.Now(),
+	}
+
+	// First batch with auth1
+	headers1 := make(http.Header)
+	headers1.Set("Authorization", "Bearer token1")
+	_ = buf.Add(make([]byte, 60), headers1) // Triggers flush
+
+	time.Sleep(300 * time.Millisecond)
+
+	// Second batch with auth2
+	headers2 := make(http.Header)
+	headers2.Set("Authorization", "Bearer token2")
+	_ = buf.Add(make([]byte, 60), headers2) // Triggers flush
+
+	time.Sleep(300 * time.Millisecond)
+
+	// Each batch should use its own auth
+	if firstAuth != "Bearer token1" {
+		t.Errorf("First flush should use token1. Got: %s", firstAuth)
+	}
+	if secondAuth != "Bearer token2" {
+		t.Errorf("Second flush should use token2. Got: %s", secondAuth)
+	}
+}
+
+func TestIndexBuffer_SendWithRetry_PreservesAuthOnRetry(t *testing.T) {
+	attemptCount := 0
+	var receivedAuths []string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attemptCount++
+		auth := r.Header.Get("Authorization")
+		receivedAuths = append(receivedAuths, auth)
+
+		// Fail first attempt, succeed on second
+		if attemptCount == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"temporary error"}`))
+		} else {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"errors":false}`))
+		}
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		Elasticsearch: config.ElasticsearchConfig{
+			URL: ts.URL,
+		},
+		Retry: config.RetryConfig{
+			Attempts:   2,
+			BackoffMin: 10 * time.Millisecond,
+		},
+	}
+
+	buf := &IndexBuffer{
+		indexPath:   "/_bulk",
+		config:      cfg,
+		logger:      logger.New(nil, true),
+		metrics:     testMetrics,
+		esClient:    newESHTTPClient(),
+		authHeaders: http.Header{"Authorization": []string{"Bearer retry-test"}},
+	}
+
+	data := []byte(`{"index":{}}\n{"field":"value"}\n`)
+	attemptType, err := buf.sendWithRetry(data)
+
+	if err != nil {
+		t.Errorf("sendWithRetry() should succeed on retry: %v", err)
+	}
+	if attemptType != "retry" {
+		t.Errorf("Expected attempt_type='retry', got '%s'", attemptType)
+	}
+
+	// Both attempts should have the auth header
+	if len(receivedAuths) != 2 {
+		t.Fatalf("Expected 2 attempts, got %d", len(receivedAuths))
+	}
+	if receivedAuths[0] != "Bearer retry-test" {
+		t.Errorf("First attempt missing auth. Got: %s", receivedAuths[0])
+	}
+	if receivedAuths[1] != "Bearer retry-test" {
+		t.Errorf("Retry attempt missing auth. Got: %s", receivedAuths[1])
+	}
+}
+
+func TestBufferManager_Add_WithAuthentication(t *testing.T) {
+	var receivedAuth string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		// Read and discard body
+		_, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"errors":false}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		Elasticsearch: config.ElasticsearchConfig{
+			URL: ts.URL,
+		},
+		Buffer: config.BufferConfig{
+			FlushInterval: 10 * time.Second,
+			MaxBatchSize:  50,
+			MaxBufferSize: 10240,
+		},
+		Retry: config.RetryConfig{
+			Attempts:   1,
+			BackoffMin: 100 * time.Millisecond,
+		},
+	}
+
+	manager := NewManager(cfg, logger.New(nil, true), testMetrics)
+
+	authHeaders := make(http.Header)
+	authHeaders.Set("Authorization", "Basic dXNlcjpwYXNz") // user:pass in base64
+
+	// Add data that exceeds batch size to trigger flush
+	err := manager.Add("/_bulk", make([]byte, 60), authHeaders)
+	if err != nil {
+		t.Fatalf("Add() failed: %v", err)
+	}
+
+	// Wait for flush
+	time.Sleep(300 * time.Millisecond)
+
+	// Verify auth was forwarded
+	if receivedAuth != "Basic dXNlcjpwYXNz" {
+		t.Errorf("Auth header not forwarded. Got: %s, Want: Basic dXNlcjpwYXNz", receivedAuth)
 	}
 }
