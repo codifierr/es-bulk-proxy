@@ -327,7 +327,12 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "valid config",
 			cfg: Config{
-				Server:        ServerConfig{Port: "8080"},
+				Server: ServerConfig{
+					Port:         "8080",
+					ReadTimeout:  5 * time.Minute,
+					WriteTimeout: 5 * time.Minute,
+					IdleTimeout:  2 * time.Minute,
+				},
 				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200"},
 				Buffer: BufferConfig{
 					FlushInterval: 30 * time.Second,
@@ -344,6 +349,11 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "empty port",
 			cfg: Config{
+				Server: ServerConfig{
+					ReadTimeout:  5 * time.Minute,
+					WriteTimeout: 5 * time.Minute,
+					IdleTimeout:  2 * time.Minute,
+				},
 				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200"},
 				Buffer: BufferConfig{
 					FlushInterval: 30 * time.Second,
@@ -360,7 +370,12 @@ func TestConfig_Validate(t *testing.T) {
 		{
 			name: "invalid retry backoff",
 			cfg: Config{
-				Server:        ServerConfig{Port: "8080"},
+				Server: ServerConfig{
+					Port:         "8080",
+					ReadTimeout:  5 * time.Minute,
+					WriteTimeout: 5 * time.Minute,
+					IdleTimeout:  2 * time.Minute,
+				},
 				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200"},
 				Buffer: BufferConfig{
 					FlushInterval: 30 * time.Second,
@@ -388,11 +403,26 @@ func TestConfig_Validate(t *testing.T) {
 
 func TestServerConfig(t *testing.T) {
 	cfg := ServerConfig{
-		Port: "8080",
+		Port:         "8080",
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	if cfg.Port != "8080" {
 		t.Errorf("Port = %s, want 8080", cfg.Port)
+	}
+
+	if cfg.ReadTimeout != 30*time.Second {
+		t.Errorf("ReadTimeout = %v, want 30s", cfg.ReadTimeout)
+	}
+
+	if cfg.WriteTimeout != 30*time.Second {
+		t.Errorf("WriteTimeout = %v, want 30s", cfg.WriteTimeout)
+	}
+
+	if cfg.IdleTimeout != 120*time.Second {
+		t.Errorf("IdleTimeout = %v, want 120s", cfg.IdleTimeout)
 	}
 }
 
