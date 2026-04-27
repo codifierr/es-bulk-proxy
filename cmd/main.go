@@ -43,14 +43,15 @@ func main() {
 	})
 
 	log.InfoFields("configuration loaded", map[string]any{
-		"es_url":          cfg.Elasticsearch.URL,
-		"flush_interval":  cfg.Buffer.FlushInterval.String(),
-		"max_batch_size":  cfg.Buffer.MaxBatchSize,
-		"max_buffer_size": cfg.Buffer.MaxBufferSize,
-		"port":            cfg.Server.Port,
-		"read_timeout":    cfg.Server.ReadTimeout.String(),
-		"write_timeout":   cfg.Server.WriteTimeout.String(),
-		"idle_timeout":    cfg.Server.IdleTimeout.String(),
+		"es_url":             cfg.Elasticsearch.URL,
+		"es_request_timeout": cfg.Elasticsearch.RequestTimeout.String(),
+		"flush_interval":     cfg.Buffer.FlushInterval.String(),
+		"max_batch_size":     cfg.Buffer.MaxBatchSize,
+		"max_buffer_size":    cfg.Buffer.MaxBufferSize,
+		"port":               cfg.Server.Port,
+		"read_timeout":       cfg.Server.ReadTimeout.String(),
+		"write_timeout":      cfg.Server.WriteTimeout.String(),
+		"idle_timeout":       cfg.Server.IdleTimeout.String(),
 	})
 
 	// Initialize metrics
