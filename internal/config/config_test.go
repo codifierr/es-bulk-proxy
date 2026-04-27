@@ -333,7 +333,7 @@ func TestConfig_Validate(t *testing.T) {
 					WriteTimeout: 5 * time.Minute,
 					IdleTimeout:  2 * time.Minute,
 				},
-				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200"},
+				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200", RequestTimeout: 30 * time.Second},
 				Buffer: BufferConfig{
 					FlushInterval: 30 * time.Second,
 					MaxBatchSize:  1024,
@@ -354,7 +354,7 @@ func TestConfig_Validate(t *testing.T) {
 					WriteTimeout: 5 * time.Minute,
 					IdleTimeout:  2 * time.Minute,
 				},
-				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200"},
+				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200", RequestTimeout: 30 * time.Second},
 				Buffer: BufferConfig{
 					FlushInterval: 30 * time.Second,
 					MaxBatchSize:  1024,
@@ -376,7 +376,7 @@ func TestConfig_Validate(t *testing.T) {
 					WriteTimeout: 5 * time.Minute,
 					IdleTimeout:  2 * time.Minute,
 				},
-				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200"},
+				Elasticsearch: ElasticsearchConfig{URL: "http://localhost:9200", RequestTimeout: 30 * time.Second},
 				Buffer: BufferConfig{
 					FlushInterval: 30 * time.Second,
 					MaxBatchSize:  1024,
@@ -428,11 +428,16 @@ func TestServerConfig(t *testing.T) {
 
 func TestElasticsearchConfig(t *testing.T) {
 	cfg := ElasticsearchConfig{
-		URL: "http://es:9200",
+		URL:            "http://es:9200",
+		RequestTimeout: 30 * time.Second,
 	}
 
 	if cfg.URL != "http://es:9200" {
 		t.Errorf("URL = %s, want http://es:9200", cfg.URL)
+	}
+
+	if cfg.RequestTimeout != 30*time.Second {
+		t.Errorf("RequestTimeout = %v, want 30s", cfg.RequestTimeout)
 	}
 }
 
