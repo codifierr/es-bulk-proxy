@@ -19,10 +19,7 @@ import (
 const version = "2.0.0"
 
 const (
-	serverReadTimeout  = 30 * time.Second
-	serverWriteTimeout = 30 * time.Second
-	serverIdleTimeout  = 120 * time.Second
-	shutdownTimeout    = 30 * time.Second
+	shutdownTimeout = 45 * time.Second
 )
 
 func main() {
@@ -51,6 +48,9 @@ func main() {
 		"max_batch_size":  cfg.Buffer.MaxBatchSize,
 		"max_buffer_size": cfg.Buffer.MaxBufferSize,
 		"port":            cfg.Server.Port,
+		"read_timeout":    cfg.Server.ReadTimeout.String(),
+		"write_timeout":   cfg.Server.WriteTimeout.String(),
+		"idle_timeout":    cfg.Server.IdleTimeout.String(),
 	})
 
 	// Initialize metrics
@@ -72,9 +72,9 @@ func main() {
 	server := &http.Server{
 		Addr:         ":" + cfg.Server.Port,
 		Handler:      mux,
-		ReadTimeout:  serverReadTimeout,
-		WriteTimeout: serverWriteTimeout,
-		IdleTimeout:  serverIdleTimeout,
+		ReadTimeout:  cfg.Server.ReadTimeout,
+		WriteTimeout: cfg.Server.WriteTimeout,
+		IdleTimeout:  cfg.Server.IdleTimeout,
 	}
 
 	// Start server in goroutine
