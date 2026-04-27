@@ -39,13 +39,12 @@ type ProxyHandler struct {
 func New(cfg *config.Config, bb *buffer.BufferManager, log *logger.Logger, m *metrics.Metrics) *ProxyHandler {
 	esURL, _ := url.Parse(cfg.Elasticsearch.URL)
 
-	proxy := httputil.NewSingleHostReverseProxy(esURL)
-
-	// Customize director to preserve headers and path
-	originalDirector := proxy.Director
-	proxy.Director = func(req *http.Request) {
-		originalDirector(req)
-		req.Host = esURL.Host
+	// Create proxy with new Rewrite API instead of deprecated Director
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(esURL)
+			r.Out.Host = esURL.Host
+		},
 	}
 
 	return &ProxyHandler{
