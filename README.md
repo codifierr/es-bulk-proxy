@@ -10,13 +10,14 @@ Built following Go best practices with the [Standard Go Project Layout](https://
 ## ✨ Features
 
 - **Smart Bulk Aggregation**: Automatically aggregates `/_bulk` requests in memory with per-index buffers
+- **Partial Failure Handling**: Detects and retries only failed documents from bulk responses, avoiding duplicates
 - **Client Authentication Forwarding**: Captures and forwards client-specific auth headers (Bearer, Basic, API Keys)
 - **Transparent Proxying**: All non-bulk requests pass through unchanged
 - **Intelligent Request Classification**: Distinguishes between bulk writes, searches, reads, maintenance, and other operations
 - **Time-based Flushing**: Configurable flush intervals (default: 60s)
 - **Size-based Flushing**: Automatic flush on size threshold (default: 5MB)
 - **Backpressure Handling**: Returns HTTP 429 when buffer is full
-- **Retry Logic**: Exponential backoff for failed bulk sends
+- **Retry Logic**: Exponential backoff with granular per-document retry for partial failures
 - **Rich Prometheus Metrics**: Detailed metrics with operation type and HTTP method labels
 - **Structured Logging**: JSON logs using [zerolog](https://github.com/rs/zerolog)
 - **Configuration Management**: Flexible config using [Viper](https://github.com/spf13/viper)
@@ -335,9 +336,10 @@ curl http://localhost:8080/metrics
   - `type="maintenance"` - Index maintenance (/_refresh, /_flush, /_forcemerge)
   - `type="write"` - Single document writes
   - `type="delete"` - Delete operations
-- `es_proxy_bulk_batches_total` - Number of bulk batches sent to Elasticsearch
+- `es_proxy_bulk_batches_total{attempt_type}` - Number of bulk batches sent (first_attempt, retry, partial_success)
 - `es_proxy_bulk_failures_total` - Number of failed bulk sends
 - `es_proxy_bulk_requeues_total{index_path}` - Number of failed bulk batches requeued for retry
+- `es_proxy_bulk_partial_failures_total{index_path}` - Individual document failures within bulk responses
 - `es_proxy_buffer_size_bytes{index_path}` - Current occupied buffer size in bytes per bulk index path, including in-flight bytes
 - `es_proxy_buffer_in_flight_bytes{index_path}` - Current in-flight buffer size in bytes per bulk index path
 - `es_proxy_buffer_in_flight_requests{index_path}` - Current in-flight request count per bulk index path
@@ -515,6 +517,9 @@ rate(es_proxy_bulk_failures_total[5m])
 
 # Requeue rate
 rate(es_proxy_bulk_requeues_total[5m])
+
+# Partial document failure rate
+rate(es_proxy_bulk_partial_failures_total[5m])
 
 # Total buffer size
 sum(es_proxy_buffer_size_bytes)
