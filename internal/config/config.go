@@ -26,7 +26,10 @@ type Config struct {
 
 // ServerConfig holds HTTP server configuration.
 type ServerConfig struct {
-	Port string
+	Port         string
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	IdleTimeout  time.Duration
 }
 
 // ElasticsearchConfig holds Elasticsearch connection configuration.
@@ -106,6 +109,18 @@ func (c *Config) Validate() error {
 		return errors.New("server.port must not be empty")
 	}
 
+	if c.Server.ReadTimeout <= 0 {
+		return errors.New("server.readtimeout must be greater than 0")
+	}
+
+	if c.Server.WriteTimeout <= 0 {
+		return errors.New("server.writetimeout must be greater than 0")
+	}
+
+	if c.Server.IdleTimeout <= 0 {
+		return errors.New("server.idletimeout must be greater than 0")
+	}
+
 	if _, err := url.ParseRequestURI(c.Elasticsearch.URL); err != nil {
 		return fmt.Errorf("elasticsearch.url must be a valid URL: %w", err)
 	}
@@ -141,6 +156,9 @@ func (c *Config) Validate() error {
 func setDefaults(v *viper.Viper) {
 	// Server defaults
 	v.SetDefault("server.port", "8080")
+	v.SetDefault("server.readtimeout", "30s")
+	v.SetDefault("server.writetimeout", "30s")
+	v.SetDefault("server.idletimeout", "2m")
 
 	// Elasticsearch defaults
 	v.SetDefault("elasticsearch.url", "http://localhost:9200")
@@ -162,54 +180,25 @@ func setDefaults(v *viper.Viper) {
 
 // bindEnvVars binds environment variables to config keys.
 func bindEnvVars(v *viper.Viper) {
-	// Use uppercase env vars for compatibility
-	err := v.BindEnv("server.port", "PORT")
-	if err != nil {
-		panic(fmt.Sprintf("failed to bind env variable: %v", err))
+	bindings := map[string]string{
+		"server.port":           "PORT",
+		"server.readtimeout":    "SERVER_READ_TIMEOUT",
+		"server.writetimeout":   "SERVER_WRITE_TIMEOUT",
+		"server.idletimeout":    "SERVER_IDLE_TIMEOUT",
+		"elasticsearch.url":     "ES_URL",
+		"buffer.flushinterval":  "FLUSH_INTERVAL",
+		"buffer.maxbatchsize":   "MAX_BATCH_SIZE",
+		"buffer.maxbuffersize":  "MAX_BUFFER_SIZE",
+		"retry.attempts":        "RETRY_ATTEMPTS",
+		"retry.backoffmin":      "RETRY_BACKOFF_MIN",
+		"logger.syslog.enabled": "SYSLOG_ENABLED",
+		"logger.syslog.network": "SYSLOG_NETWORK",
+		"logger.syslog.address": "SYSLOG_ADDRESS",
 	}
 
-	err = v.BindEnv("elasticsearch.url", "ES_URL")
-	if err != nil {
-		panic(fmt.Sprintf("failed to bind env variable: %v", err))
-	}
-
-	err = v.BindEnv("buffer.flushinterval", "FLUSH_INTERVAL")
-	if err != nil {
-		panic(fmt.Sprintf("failed to bind env variable: %v", err))
-	}
-
-	err = v.BindEnv("buffer.maxbatchsize", "MAX_BATCH_SIZE")
-	if err != nil {
-		panic(fmt.Sprintf("failed to bind env variable: %v", err))
-	}
-
-	err = v.BindEnv("buffer.maxbuffersize", "MAX_BUFFER_SIZE")
-	if err != nil {
-		panic(fmt.Sprintf("failed to bind env variable: %v", err))
-	}
-
-	err = v.BindEnv("retry.attempts", "RETRY_ATTEMPTS")
-	if err != nil {
-		panic(fmt.Sprintf("failed to bind env variable: %v", err))
-	}
-
-	err = v.BindEnv("retry.backoffmin", "RETRY_BACKOFF_MIN")
-	if err != nil {
-		panic(fmt.Sprintf("failed to bind env variable: %v", err))
-	}
-
-	err = v.BindEnv("logger.syslog.enabled", "SYSLOG_ENABLED")
-	if err != nil {
-		panic(fmt.Sprintf("failed to bind env variable: %v", err))
-	}
-
-	err = v.BindEnv("logger.syslog.network", "SYSLOG_NETWORK")
-	if err != nil {
-		panic(fmt.Sprintf("failed to bind env variable: %v", err))
-	}
-
-	err = v.BindEnv("logger.syslog.address", "SYSLOG_ADDRESS")
-	if err != nil {
-		panic(fmt.Sprintf("failed to bind env variable: %v", err))
+	for key, env := range bindings {
+		if err := v.BindEnv(key, env); err != nil {
+			panic(fmt.Sprintf("failed to bind env variable %s: %v", env, err))
+		}
 	}
 }
