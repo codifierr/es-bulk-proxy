@@ -47,7 +47,7 @@ linters:
     - unparam
     - usestdlibvars
     - whitespace
-    - wsl
+    - wsl_v5
     - zerologlint
   settings:
     dogsled:
@@ -146,9 +146,7 @@ linters:
     wsl:
       strict-append: true
       allow-assign-and-call: true
-      allow-multiline-assign: true
       force-case-trailing-whitespace: 0
-      allow-trailing-comment: true
       allow-separated-leading-comment: false
       allow-cuddle-declarations: false
       force-err-cuddling: true
