@@ -7,18 +7,19 @@ import (
 
 // Metrics holds all Prometheus metrics.
 type Metrics struct {
-	RequestsTotal          *prometheus.CounterVec
-	BulkBatchesTotal       *prometheus.CounterVec
-	BulkFailuresTotal      prometheus.Counter
-	BulkRetriesTotal       *prometheus.CounterVec
-	BulkRequeuesTotal      *prometheus.CounterVec
-	BufferSizeBytes        *prometheus.GaugeVec
-	BufferInFlightBytes    *prometheus.GaugeVec
-	BufferInFlightRequests *prometheus.GaugeVec
-	ProxyLatency           *prometheus.HistogramVec
-	FlushDuration          *prometheus.HistogramVec
-	DroppedBatchesTotal    *prometheus.CounterVec
-	LastSuccessfulFlush    *prometheus.GaugeVec
+	RequestsTotal            *prometheus.CounterVec
+	BulkBatchesTotal         *prometheus.CounterVec
+	BulkFailuresTotal        prometheus.Counter
+	BulkRetriesTotal         *prometheus.CounterVec
+	BulkRequeuesTotal        *prometheus.CounterVec
+	BulkPartialFailuresTotal *prometheus.CounterVec
+	BufferSizeBytes          *prometheus.GaugeVec
+	BufferInFlightBytes      *prometheus.GaugeVec
+	BufferInFlightRequests   *prometheus.GaugeVec
+	ProxyLatency             *prometheus.HistogramVec
+	FlushDuration            *prometheus.HistogramVec
+	DroppedBatchesTotal      *prometheus.CounterVec
+	LastSuccessfulFlush      *prometheus.GaugeVec
 }
 
 // New creates and registers all metrics.
@@ -55,6 +56,13 @@ func New() *Metrics {
 			prometheus.CounterOpts{
 				Name: "es_proxy_bulk_requeues_total",
 				Help: "Total number of bulk batches requeued after a failed send",
+			},
+			[]string{"index_path"},
+		),
+		BulkPartialFailuresTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "es_proxy_bulk_partial_failures_total",
+				Help: "Total number of individual document failures in bulk responses",
 			},
 			[]string{"index_path"},
 		),
