@@ -21,7 +21,8 @@ var testMetrics = metrics.New()
 func TestNew(t *testing.T) {
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: "http://localhost:9200",
+			URL:            "http://localhost:9200",
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 1 * time.Second,
@@ -58,7 +59,8 @@ func TestProxyHandler_ServeHTTP_BulkRequest(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: esServer.URL,
+			URL:            esServer.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -149,7 +151,8 @@ func TestProxyHandler_ServeHTTP_ProxyRequests(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: esServer.URL,
+			URL:            esServer.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -233,7 +236,8 @@ func TestProxyHandler_HandleBulk_BufferFull(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: esServer.URL,
+			URL:            esServer.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -267,7 +271,8 @@ func TestProxyHandler_HandleBulk_BufferFull(t *testing.T) {
 func TestProxyHandler_HandleBulk_ReadError(t *testing.T) {
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: "http://localhost:9200",
+			URL:            "http://localhost:9200",
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -294,7 +299,8 @@ func TestProxyHandler_HandleBulk_ReadError(t *testing.T) {
 func TestProxyHandler_ClassifyRequest(t *testing.T) {
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: "http://localhost:9200",
+			URL:            "http://localhost:9200",
+			RequestTimeout: 30 * time.Second,
 		},
 	}
 	log := logger.New(nil, true)
@@ -447,7 +453,8 @@ func TestProxyHandler_HandleBulk_NewlineAppending(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: esServer.URL,
+			URL:            esServer.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -482,7 +489,8 @@ func TestProxyHandler_HandleBulk_NewlineAppending(t *testing.T) {
 func TestProxyHandler_HandleBulk_EmptyBody(t *testing.T) {
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: "http://localhost:9200",
+			URL:            "http://localhost:9200",
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
