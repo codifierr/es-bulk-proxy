@@ -4,6 +4,17 @@
 server:
   port: "8080"
 
+  # HTTP server timeouts
+  # Timeout for reading the entire request, including body
+  # For large bulk requests, increase this value (e.g., "5m")
+  readtimeout: "30s"
+
+  # Timeout for writing the response
+  writetimeout: "30s"
+
+  # Maximum time to wait for the next request when keep-alives are enabled
+  idletimeout: "2m"
+
 elasticsearch:
   url: "http://es:9200"
 
