@@ -177,9 +177,18 @@ Create a `configs/config.yaml`:
 ```yaml
 server:
   port: "8080"
+  
+  # HTTP server timeouts
+  readtimeout: "30s"       # Timeout for reading entire request including body
+  writetimeout: "30s"      # Timeout for writing response
+  idletimeout: "2m"        # Keep-alive timeout
 
 elasticsearch:
   url: "http://elasticsearch:9200"
+  
+  # Timeout for individual HTTP requests to Elasticsearch
+  # Increase for large bulk payloads or slow ES clusters
+  requesttimeout: "30s"
 
 buffer:
   flushinterval: "30s"
@@ -198,7 +207,11 @@ All config values can be overridden with environment variables:
 | Variable | Description | Default |
 | --- | --- | --- |
 | `PORT` | HTTP server port | `8080` |
+| `SERVER_READ_TIMEOUT` | HTTP server read timeout (for large bulk requests, increase this) | `30s` |
+| `SERVER_WRITE_TIMEOUT` | HTTP server write timeout | `30s` |
+| `SERVER_IDLE_TIMEOUT` | HTTP server keep-alive timeout | `2m` |
 | `ES_URL` | Elasticsearch endpoint URL | `http://localhost:9200` |
+| `ES_REQUEST_TIMEOUT` | Timeout for bulk requests to Elasticsearch (increase for large payloads) | `30s` |
 | `FLUSH_INTERVAL` | Time-based flush interval | `30s` |
 | `MAX_BATCH_SIZE` | Size threshold for flushing (bytes) | `5242880` (5MB) |
 | `MAX_BUFFER_SIZE` | Maximum buffer size (bytes) | `52428800` (50MB) |
@@ -612,6 +625,26 @@ export FLUSH_INTERVAL=1s
 
 # Scale horizontally
 kubectl scale deployment es-bulk-proxy --replicas=5
+```
+
+### Context Deadline Exceeded / I/O Timeouts
+
+**Cause**: Request timeouts too short for large bulk operations or slow connections
+
+**Solutions**:
+
+```bash
+# Increase server read timeout (for slow clients sending large payloads)
+export SERVER_READ_TIMEOUT=5m
+
+# Increase ES request timeout (for slow Elasticsearch responses)
+export ES_REQUEST_TIMEOUT=2m
+
+# Or in config.yaml
+server:
+  readtimeout: "5m"
+elasticsearch:
+  requesttimeout: "2m"
 ```
 
 ### High Latency

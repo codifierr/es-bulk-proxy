@@ -34,7 +34,8 @@ type ServerConfig struct {
 
 // ElasticsearchConfig holds Elasticsearch connection configuration.
 type ElasticsearchConfig struct {
-	URL string
+	URL            string
+	RequestTimeout time.Duration
 }
 
 // BufferConfig holds bulk buffer configuration.
@@ -105,20 +106,12 @@ func Load() (*Config, error) {
 
 // Validate checks that configuration values are internally consistent.
 func (c *Config) Validate() error {
-	if c.Server.Port == "" {
-		return errors.New("server.port must not be empty")
+	if err := c.Server.validate(); err != nil {
+		return err
 	}
 
-	if c.Server.ReadTimeout <= 0 {
-		return errors.New("server.readtimeout must be greater than 0")
-	}
-
-	if c.Server.WriteTimeout <= 0 {
-		return errors.New("server.writetimeout must be greater than 0")
-	}
-
-	if c.Server.IdleTimeout <= 0 {
-		return errors.New("server.idletimeout must be greater than 0")
+	if c.Elasticsearch.RequestTimeout <= 0 {
+		return errors.New("elasticsearch.requesttimeout must be greater than 0")
 	}
 
 	if _, err := url.ParseRequestURI(c.Elasticsearch.URL); err != nil {
@@ -152,6 +145,27 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// validate checks server configuration values.
+func (s *ServerConfig) validate() error {
+	if s.Port == "" {
+		return errors.New("server.port must not be empty")
+	}
+
+	if s.ReadTimeout <= 0 {
+		return errors.New("server.readtimeout must be greater than 0")
+	}
+
+	if s.WriteTimeout <= 0 {
+		return errors.New("server.writetimeout must be greater than 0")
+	}
+
+	if s.IdleTimeout <= 0 {
+		return errors.New("server.idletimeout must be greater than 0")
+	}
+
+	return nil
+}
+
 // setDefaults sets default configuration values.
 func setDefaults(v *viper.Viper) {
 	// Server defaults
@@ -162,6 +176,7 @@ func setDefaults(v *viper.Viper) {
 
 	// Elasticsearch defaults
 	v.SetDefault("elasticsearch.url", "http://localhost:9200")
+	v.SetDefault("elasticsearch.requesttimeout", "30s")
 
 	// Buffer defaults
 	v.SetDefault("buffer.flushinterval", "30s")
@@ -181,19 +196,20 @@ func setDefaults(v *viper.Viper) {
 // bindEnvVars binds environment variables to config keys.
 func bindEnvVars(v *viper.Viper) {
 	bindings := map[string]string{
-		"server.port":           "PORT",
-		"server.readtimeout":    "SERVER_READ_TIMEOUT",
-		"server.writetimeout":   "SERVER_WRITE_TIMEOUT",
-		"server.idletimeout":    "SERVER_IDLE_TIMEOUT",
-		"elasticsearch.url":     "ES_URL",
-		"buffer.flushinterval":  "FLUSH_INTERVAL",
-		"buffer.maxbatchsize":   "MAX_BATCH_SIZE",
-		"buffer.maxbuffersize":  "MAX_BUFFER_SIZE",
-		"retry.attempts":        "RETRY_ATTEMPTS",
-		"retry.backoffmin":      "RETRY_BACKOFF_MIN",
-		"logger.syslog.enabled": "SYSLOG_ENABLED",
-		"logger.syslog.network": "SYSLOG_NETWORK",
-		"logger.syslog.address": "SYSLOG_ADDRESS",
+		"server.port":                  "PORT",
+		"server.readtimeout":           "SERVER_READ_TIMEOUT",
+		"server.writetimeout":          "SERVER_WRITE_TIMEOUT",
+		"server.idletimeout":           "SERVER_IDLE_TIMEOUT",
+		"elasticsearch.url":            "ES_URL",
+		"elasticsearch.requesttimeout": "ES_REQUEST_TIMEOUT",
+		"buffer.flushinterval":         "FLUSH_INTERVAL",
+		"buffer.maxbatchsize":          "MAX_BATCH_SIZE",
+		"buffer.maxbuffersize":         "MAX_BUFFER_SIZE",
+		"retry.attempts":               "RETRY_ATTEMPTS",
+		"retry.backoffmin":             "RETRY_BACKOFF_MIN",
+		"logger.syslog.enabled":        "SYSLOG_ENABLED",
+		"logger.syslog.network":        "SYSLOG_NETWORK",
+		"logger.syslog.address":        "SYSLOG_ADDRESS",
 	}
 
 	for key, env := range bindings {

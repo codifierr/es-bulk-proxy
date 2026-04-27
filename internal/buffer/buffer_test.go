@@ -288,7 +288,8 @@ func TestIndexBuffer_FlushOnSizeThreshold(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -342,7 +343,8 @@ func TestIndexBuffer_TimedFlush(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 200 * time.Millisecond, // Short interval for testing
@@ -398,7 +400,8 @@ func TestIndexBuffer_SendWithRetry_Success(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Retry: config.RetryConfig{
 			Attempts:   3,
@@ -437,7 +440,8 @@ func TestIndexBuffer_SendWithRetry_Failure(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Retry: config.RetryConfig{
 			Attempts:   2,
@@ -480,7 +484,8 @@ func TestIndexBuffer_FlushFailureRequeuesData(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -563,7 +568,8 @@ func TestIndexBuffer_Shutdown(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -607,7 +613,8 @@ func TestBufferManager_Shutdown(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -678,7 +685,8 @@ func TestIndexBuffer_ForwardsAuthenticationHeaders(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -742,7 +750,8 @@ func TestIndexBuffer_UsesFirstRequestAuthHeaders(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -811,7 +820,8 @@ func TestIndexBuffer_ClearsAuthHeadersAfterSuccessfulFlush(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -879,7 +889,8 @@ func TestIndexBuffer_SendWithRetry_PreservesAuthOnRetry(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Retry: config.RetryConfig{
 			Attempts:   2,
@@ -932,7 +943,8 @@ func TestBufferManager_Add_WithAuthentication(t *testing.T) {
 
 	cfg := &config.Config{
 		Elasticsearch: config.ElasticsearchConfig{
-			URL: ts.URL,
+			URL:            ts.URL,
+			RequestTimeout: 30 * time.Second,
 		},
 		Buffer: config.BufferConfig{
 			FlushInterval: 10 * time.Second,
@@ -1088,7 +1100,7 @@ func TestIndexBuffer_SendWithRetry_PartialFailureRetried(t *testing.T) {
 	defer ts.Close()
 
 	cfg := &config.Config{
-		Elasticsearch: config.ElasticsearchConfig{URL: ts.URL},
+		Elasticsearch: config.ElasticsearchConfig{URL: ts.URL, RequestTimeout: 30 * time.Second},
 		Retry:         config.RetryConfig{Attempts: 3, BackoffMin: 10 * time.Millisecond},
 	}
 	buf := &IndexBuffer{
@@ -1129,7 +1141,7 @@ func TestIndexBuffer_SendWithRetry_PartialFailureExhausted(t *testing.T) {
 	defer ts.Close()
 
 	cfg := &config.Config{
-		Elasticsearch: config.ElasticsearchConfig{URL: ts.URL},
+		Elasticsearch: config.ElasticsearchConfig{URL: ts.URL, RequestTimeout: 30 * time.Second},
 		Retry:         config.RetryConfig{Attempts: 1, BackoffMin: 10 * time.Millisecond},
 	}
 	buf := &IndexBuffer{

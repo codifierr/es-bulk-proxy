@@ -18,6 +18,10 @@ server:
 elasticsearch:
   url: "http://es:9200"
 
+  # Timeout for individual HTTP requests to Elasticsearch (e.g., bulk sends)
+  # Increase for large bulk payloads or slow ES clusters
+  requesttimeout: "30s"
+
 buffer:
   # Time interval to flush buffer
   flushinterval: "60s"

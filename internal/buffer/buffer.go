@@ -24,7 +24,6 @@ const (
 	esIdleConnTimeout       = 90 * time.Second
 	esTLSHandshakeTimeout   = 10 * time.Second
 	esExpectContinueTimeout = 1 * time.Second
-	esRequestTimeout        = 30 * time.Second
 	initialBufferCapacity   = 1024 * 1024
 	esHTTPErrorThreshold    = 300
 )
@@ -86,7 +85,6 @@ func newESHTTPClient() *http.Client {
 	}
 
 	return &http.Client{
-		Timeout:   esRequestTimeout,
 		Transport: transport,
 	}
 }
@@ -561,7 +559,7 @@ func (ib *IndexBuffer) sendWithRetry(data []byte) (string, []byte, error) {
 			})
 		}
 
-		reqCtx, cancel := context.WithTimeout(context.Background(), esRequestTimeout)
+		reqCtx, cancel := context.WithTimeout(context.Background(), ib.config.Elasticsearch.RequestTimeout)
 
 		body, statusCode, err := ib.sendBulkRequest(reqCtx, currentData)
 

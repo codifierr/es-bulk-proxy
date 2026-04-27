@@ -22,6 +22,9 @@ This repository uses **Go 1.26.2** for the ES Bulk Proxy service.
    ```
 5. **Update related files** as needed (see below)
 6. **Update README.md** once all changes are validated and complete
+   - For configuration changes: update config examples, environment variable table, and troubleshooting
+   - For new features: update feature list and usage examples
+   - For API changes: update API endpoints section
 
 ## Required Updates
 
@@ -36,10 +39,16 @@ When adding, removing, or updating metrics:
 ### Configuration Changes
 When modifying configuration:
 - Update `internal/config/config.go` with new fields
-- Update `configs/config.yaml` with examples
+- Update `configs/config.yaml` with examples and comments
 - Add validation logic if needed
 - Update configuration test cases in `internal/config/config_test.go`
-- Document changes in README.md
+- Add environment variable bindings in `bindEnvVars()`
+- Update `setDefaults()` with appropriate default values
+- **ALWAYS update README.md** with:
+  - New configuration fields in the YAML example
+  - New environment variables in the table
+  - Usage examples if applicable
+  - Troubleshooting section if the config addresses common issues
 
 ### New Functionality
 - **Always add test cases** for new functionality
