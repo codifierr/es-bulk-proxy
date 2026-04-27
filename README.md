@@ -1,6 +1,6 @@
 # Elasticsearch Proxy with Bulk Aggregation
 
-[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)](https://golang.org)
+[![Go Version](https://img.shields.io/badge/Go-1.26.2+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A production-ready Go service that acts as a transparent Elasticsearch proxy with intelligent bulk request aggregation. Designed to optimize Elasticsearch performance by batching small bulk requests while transparently proxying all other operations.
@@ -88,9 +88,11 @@ es-bulk-proxy/
 
 ### Prerequisites
 
-- Go 1.25 or higher
+- Go 1.26.2 or higher
 - Docker & Docker Compose (for containerized deployment)
 - Elasticsearch instance (for testing)
+- Make (for build automation)
+- pre-commit (optional, for automated code quality checks)
 
 ### Option 1: Docker Compose (Recommended)
 
@@ -372,10 +374,39 @@ To use this proxy with Zenarmor:
 
 ### Project Layout
 
+Following the [Standard Go Project Layout](https://github.com/golang-standards/project-layout):
+
 - `/cmd` - Main applications for this project
 - `/internal` - Private application and library code (not importable by external projects)
+  - `/internal/buffer` - Bulk buffer aggregation logic
+  - `/internal/config` - Configuration management
+  - `/internal/handler` - HTTP handlers and routing
+  - `/internal/logger` - Structured logging
+  - `/internal/metrics` - Prometheus metrics
 - `/configs` - Configuration file templates or default configs
-- `/deployments` - Deployment configurations (Docker, Kubernetes, etc.)
+- `/deployments` - Deployment configurations (Docker, Kubernetes, Grafana)
+- `/scripts` - Build, test, and utility scripts
+
+### Code Quality
+
+This project uses:
+
+- **golangci-lint** - Comprehensive linting with 40+ linters enabled
+- **pre-commit hooks** - Automated checks before commits
+- **gofmt** - Code formatting with simplifications
+- **go vet** - Static analysis
+
+Install pre-commit hooks:
+
+```bash
+make precommit-install
+```
+
+Run all quality checks:
+
+```bash
+make lint
+```
 
 ### Build Commands
 
@@ -386,6 +417,15 @@ make help
 # Download dependencies
 make deps
 
+# Install pre-commit hooks
+make precommit-install
+
+# Format code
+make format
+
+# Run go vet
+make vet
+
 # Build binary
 make build
 
@@ -395,8 +435,11 @@ make run
 # Run tests
 make test
 
-# Run linters
+# Run linters (includes pre-commit hooks)
 make lint
+
+# Run all checks and build
+make all
 
 # Build Docker image
 make docker-build
@@ -409,13 +452,16 @@ make dev
 
 ```bash
 # Run unit tests
-go test -v ./...
+make test
 
-# Run integration tests
+# Run integration tests (requires Docker)
 make integration-test
 
-# Run with coverage
-make test
+# Run benchmarks
+make bench
+
+# Generate test traffic for dashboard
+make test-traffic
 ```
 
 ## 🐳 Deployment
@@ -631,7 +677,14 @@ See LICENSE file in repository root.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on:
+
+- Development setup and workflow
+- Code standards and best practices
+- Testing requirements
+- Submitting pull requests
+
+Please feel free to submit issues and pull requests.
 
 ## 📞 Support
 
