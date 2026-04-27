@@ -129,8 +129,8 @@ func (ph *ProxyHandler) handleBulk(w http.ResponseWriter, r *http.Request) {
 		authHeaders.Set("X-Elastic-Api-Key", apiKey)
 	}
 	// Basic authentication (alternative header format)
-	if apiKeyId := r.Header.Get("ApiKey"); apiKeyId != "" {
-		authHeaders.Set("ApiKey", apiKeyId)
+	if apiKeyID := r.Header.Get("ApiKey"); apiKeyID != "" {
+		authHeaders.Set("ApiKey", apiKeyID)
 	}
 
 	// Add to buffer with index path to preserve ES context

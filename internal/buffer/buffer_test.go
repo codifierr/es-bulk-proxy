@@ -417,7 +417,7 @@ func TestIndexBuffer_SendWithRetry_Success(t *testing.T) {
 	}
 
 	data := []byte(`{"index":{}}\n{"field":"value"}\n`)
-	attemptType, err := buf.sendWithRetry(data)
+	attemptType, _, err := buf.sendWithRetry(data)
 	if err != nil {
 		t.Errorf("sendWithRetry() failed: %v", err)
 	}
@@ -456,7 +456,7 @@ func TestIndexBuffer_SendWithRetry_Failure(t *testing.T) {
 	}
 
 	data := []byte(`{"index":{}}\n{"field":"value"}\n`)
-	attemptType, err := buf.sendWithRetry(data)
+	attemptType, _, err := buf.sendWithRetry(data)
 	if err == nil {
 		t.Error("sendWithRetry() should return error on failures")
 	}
@@ -897,7 +897,7 @@ func TestIndexBuffer_SendWithRetry_PreservesAuthOnRetry(t *testing.T) {
 	}
 
 	data := []byte(`{"index":{}}\n{"field":"value"}\n`)
-	attemptType, err := buf.sendWithRetry(data)
+	attemptType, _, err := buf.sendWithRetry(data)
 
 	if err != nil {
 		t.Errorf("sendWithRetry() should succeed on retry: %v", err)
@@ -962,5 +962,197 @@ func TestBufferManager_Add_WithAuthentication(t *testing.T) {
 	// Verify auth was forwarded
 	if receivedAuth != "Basic dXNlcjpwYXNz" {
 		t.Errorf("Auth header not forwarded. Got: %s, Want: Basic dXNlcjpwYXNz", receivedAuth)
+	}
+}
+
+func TestFindFailedItemIndices_NoErrors(t *testing.T) {
+	body := []byte(`{"errors":false,"items":[{"index":{"_index":"test","_id":"1","status":201}}]}`)
+	got := findFailedItemIndices(body)
+	if got != nil {
+		t.Errorf("expected nil, got %v", got)
+	}
+}
+
+func TestFindFailedItemIndices_WithErrors(t *testing.T) {
+	body := []byte(`{"errors":true,"items":[` +
+		`{"index":{"_index":"test","_id":"1","status":201}},` +
+		`{"index":{"_index":"test","_id":"2","status":429}},` +
+		`{"create":{"_index":"test","_id":"3","status":201}},` +
+		`{"index":{"_index":"test","_id":"4","status":500}}` +
+		`]}`)
+	got := findFailedItemIndices(body)
+	if len(got) != 2 || got[0] != 1 || got[1] != 3 {
+		t.Errorf("expected [1 3], got %v", got)
+	}
+}
+
+func TestFindFailedItemIndices_DeleteFailure(t *testing.T) {
+	body := []byte(`{"errors":true,"items":[` +
+		`{"delete":{"_index":"test","_id":"1","status":404}},` +
+		`{"index":{"_index":"test","_id":"2","status":201}}` +
+		`]}`)
+	got := findFailedItemIndices(body)
+	if len(got) != 1 || got[0] != 0 {
+		t.Errorf("expected [0], got %v", got)
+	}
+}
+
+func TestFindFailedItemIndices_InvalidJSON(t *testing.T) {
+	body := []byte(`not json`)
+	got := findFailedItemIndices(body)
+	if got != nil {
+		t.Errorf("expected nil for invalid JSON, got %v", got)
+	}
+}
+
+func TestExtractFailedPairs_IndexOperations(t *testing.T) {
+	payload := []byte(
+		"{\"index\":{\"_id\":\"1\"}}\n{\"field\":\"v1\"}\n" +
+			"{\"index\":{\"_id\":\"2\"}}\n{\"field\":\"v2\"}\n" +
+			"{\"index\":{\"_id\":\"3\"}}\n{\"field\":\"v3\"}\n",
+	)
+
+	// Extract operations at index 0 and 2
+	got := extractFailedPairs(payload, []int{0, 2})
+	want := "{\"index\":{\"_id\":\"1\"}}\n{\"field\":\"v1\"}\n" +
+		"{\"index\":{\"_id\":\"3\"}}\n{\"field\":\"v3\"}\n"
+
+	if string(got) != want {
+		t.Errorf("extractFailedPairs:\ngot:  %q\nwant: %q", string(got), want)
+	}
+}
+
+func TestExtractFailedPairs_WithDelete(t *testing.T) {
+	payload := []byte(
+		"{\"index\":{\"_id\":\"1\"}}\n{\"field\":\"v1\"}\n" +
+			"{\"delete\":{\"_id\":\"2\"}}\n" +
+			"{\"index\":{\"_id\":\"3\"}}\n{\"field\":\"v3\"}\n",
+	)
+
+	// Extract the delete at index 1
+	got := extractFailedPairs(payload, []int{1})
+	want := "{\"delete\":{\"_id\":\"2\"}}\n"
+
+	if string(got) != want {
+		t.Errorf("extractFailedPairs with delete:\ngot:  %q\nwant: %q", string(got), want)
+	}
+}
+
+func TestExtractFailedPairs_Empty(t *testing.T) {
+	payload := []byte("{\"index\":{}}\n{\"doc\":1}\n")
+	got := extractFailedPairs(payload, nil)
+	if got != nil {
+		t.Errorf("expected nil for empty failedIndices, got %q", string(got))
+	}
+}
+
+func TestCountNDJSONOperations(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    string
+		wantOps int
+	}{
+		{"two index ops", "{\"index\":{}}\n{\"d\":1}\n{\"index\":{}}\n{\"d\":2}\n", 2},
+		{"index + delete", "{\"index\":{}}\n{\"d\":1}\n{\"delete\":{}}\n", 2},
+		{"empty", "", 0},
+		{"single delete", "{\"delete\":{}}\n", 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := countNDJSONOperations([]byte(tt.data))
+			if got != tt.wantOps {
+				t.Errorf("countNDJSONOperations(%q) = %d, want %d", tt.data, got, tt.wantOps)
+			}
+		})
+	}
+}
+
+func TestIndexBuffer_SendWithRetry_PartialFailureRetried(t *testing.T) {
+	attemptCount := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attemptCount++
+		if attemptCount == 1 {
+			// First attempt: item 1 fails with 429
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"errors":true,"items":[` +
+				`{"index":{"_index":"t","_id":"1","status":201}},` +
+				`{"index":{"_index":"t","_id":"2","status":429}},` +
+				`{"index":{"_index":"t","_id":"3","status":201}}]}`,
+			))
+		} else {
+			// Retry succeeds
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"errors":false,"items":[{"index":{"_index":"t","_id":"2","status":201}}]}`))
+		}
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		Elasticsearch: config.ElasticsearchConfig{URL: ts.URL},
+		Retry:         config.RetryConfig{Attempts: 3, BackoffMin: 10 * time.Millisecond},
+	}
+	buf := &IndexBuffer{
+		indexPath: "/_bulk",
+		config:    cfg,
+		logger:    logger.New(nil, true),
+		metrics:   testMetrics,
+		esClient:  newESHTTPClient(),
+	}
+
+	data := []byte(
+		"{\"index\":{\"_id\":\"1\"}}\n{\"v\":1}\n" +
+			"{\"index\":{\"_id\":\"2\"}}\n{\"v\":2}\n" +
+			"{\"index\":{\"_id\":\"3\"}}\n{\"v\":3}\n",
+	)
+
+	attemptType, failedData, err := buf.sendWithRetry(data)
+	if err != nil {
+		t.Fatalf("expected success after partial retry, got: %v", err)
+	}
+	if failedData != nil {
+		t.Fatalf("expected nil failedData, got %d bytes", len(failedData))
+	}
+	if attemptType != "retry" {
+		t.Errorf("expected attempt_type 'retry', got '%s'", attemptType)
+	}
+	if attemptCount != 2 {
+		t.Errorf("expected 2 HTTP requests, got %d", attemptCount)
+	}
+}
+
+func TestIndexBuffer_SendWithRetry_PartialFailureExhausted(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Always return partial failure for item 0
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"errors":true,"items":[{"index":{"_index":"t","_id":"1","status":429}}]}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		Elasticsearch: config.ElasticsearchConfig{URL: ts.URL},
+		Retry:         config.RetryConfig{Attempts: 1, BackoffMin: 10 * time.Millisecond},
+	}
+	buf := &IndexBuffer{
+		indexPath: "/_bulk",
+		config:    cfg,
+		logger:    logger.New(nil, true),
+		metrics:   testMetrics,
+		esClient:  newESHTTPClient(),
+	}
+
+	data := []byte("{\"index\":{\"_id\":\"1\"}}\n{\"v\":1}\n")
+
+	attemptType, failedData, err := buf.sendWithRetry(data)
+	if err == nil {
+		t.Fatal("expected error when retries exhausted")
+	}
+	if attemptType != "partial_success" {
+		t.Errorf("expected 'partial_success', got '%s'", attemptType)
+	}
+	if failedData == nil {
+		t.Fatal("expected non-nil failedData for partial failure")
+	}
+	if string(failedData) != string(data) {
+		t.Errorf("failedData should contain the failed item:\ngot:  %q\nwant: %q", string(failedData), string(data))
 	}
 }

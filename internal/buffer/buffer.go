@@ -3,6 +3,7 @@ package buffer
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -25,6 +26,7 @@ const (
 	esExpectContinueTimeout = 1 * time.Second
 	esRequestTimeout        = 30 * time.Second
 	initialBufferCapacity   = 1024 * 1024
+	esHTTPErrorThreshold    = 300
 )
 
 // BufferManager manages multiple index-specific buffers.
@@ -245,35 +247,10 @@ func (ib *IndexBuffer) flush() {
 	ib.updateBufferMetricLocked()
 	ib.mu.Unlock()
 
-	// Send with retry
-	attemptType, err := ib.sendWithRetry(dataToSend)
+	// Send with retry (handles partial item failures internally)
+	attemptType, failedData, err := ib.sendWithRetry(dataToSend)
 	if err != nil {
-		ib.mu.Lock()
-		queuedData := ib.data
-		combined := make([]byte, 0, len(ib.inFlightData)+len(queuedData))
-		combined = append(combined, ib.inFlightData...)
-		combined = append(combined, queuedData...)
-
-		ib.data = combined
-		ib.size += ib.inFlightSize
-		ib.requestsTotal += ib.inFlightReqs
-		ib.inFlightData = nil
-		ib.inFlightSize = 0
-		ib.inFlightReqs = 0
-		ib.flushInFlight = false
-		// Keep authHeaders for retry
-		ib.updateBufferMetricLocked()
-		ib.mu.Unlock()
-
-		ib.logger.ErrorFields("failed to send bulk", map[string]any{
-			"error":     err.Error(),
-			"size":      batchSize,
-			"requests":  requestCount,
-			"indexPath": ib.indexPath,
-			"action":    "requeued_batch",
-		})
-		ib.metrics.BulkFailuresTotal.Inc()
-		ib.metrics.BulkRequeuesTotal.WithLabelValues(ib.indexPath).Inc()
+		ib.handleFlushError(err, failedData, batchSize, requestCount)
 	} else {
 		shouldFlushAgain := false
 
@@ -304,12 +281,272 @@ func (ib *IndexBuffer) flush() {
 	}
 }
 
-// sendWithRetry sends data with exponential backoff retry.
-// Returns attempt type ("first_attempt" or "retry") and error.
-func (ib *IndexBuffer) sendWithRetry(data []byte) (string, error) {
+// itemStatus extracts only the status code from an ES bulk response item.
+type itemStatus struct {
+	Status int `json:"status"`
+}
+
+// bulkResponseItem represents one item in the ES bulk response.
+type bulkResponseItem struct {
+	Index  *itemStatus `json:"index,omitempty"`
+	Create *itemStatus `json:"create,omitempty"`
+	Update *itemStatus `json:"update,omitempty"`
+	Delete *itemStatus `json:"delete,omitempty"`
+}
+
+func (i *bulkResponseItem) getStatus() int {
+	switch {
+	case i.Index != nil:
+		return i.Index.Status
+	case i.Create != nil:
+		return i.Create.Status
+	case i.Update != nil:
+		return i.Update.Status
+	case i.Delete != nil:
+		return i.Delete.Status
+	default:
+		return 0
+	}
+}
+
+var errorsTrue = []byte(`"errors":true`)
+
+// findFailedItemIndices scans an ES bulk response and returns the 0-based
+// indices of items that failed (HTTP status >= 300). Returns nil when there
+// are no errors — the common fast-path.
+func findFailedItemIndices(body []byte) []int {
+	// Fast path: most batches succeed entirely.
+	if !bytes.Contains(body, errorsTrue) {
+		return nil
+	}
+
+	var resp struct {
+		Errors bool               `json:"errors"`
+		Items  []bulkResponseItem `json:"items"`
+	}
+
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil
+	}
+
+	if !resp.Errors {
+		return nil
+	}
+
+	var failed []int
+
+	for i := range resp.Items {
+		if resp.Items[i].getStatus() >= esHTTPErrorThreshold {
+			failed = append(failed, i)
+		}
+	}
+
+	return failed
+}
+
+// extractFailedPairs streams through an ndjson bulk payload and returns only
+// the action+document line pairs at the specified operation indices.
+// Delete operations are single-line; all others are two-line (action + doc).
+// No JSON document bodies are parsed.
+func extractFailedPairs(payload []byte, failedIndices []int) []byte {
+	if len(failedIndices) == 0 {
+		return nil
+	}
+
+	failedSet := make(map[int]struct{}, len(failedIndices))
+	for _, idx := range failedIndices {
+		failedSet[idx] = struct{}{}
+	}
+
+	var result []byte
+
+	opIndex := 0
+	offset := 0
+
+	for offset < len(payload) {
+		actionStart := offset
+
+		lineEnd := bytes.IndexByte(payload[offset:], '\n')
+		if lineEnd == -1 {
+			break
+		}
+
+		actionLine := payload[offset : offset+lineEnd]
+		offset += lineEnd + 1
+
+		isDelete := bytes.Contains(actionLine, []byte(`"delete"`))
+
+		opEnd := offset
+
+		if !isDelete && offset < len(payload) {
+			docLineEnd := bytes.IndexByte(payload[offset:], '\n')
+			if docLineEnd == -1 {
+				opEnd = len(payload)
+			} else {
+				opEnd = offset + docLineEnd + 1
+			}
+
+			offset = opEnd
+		}
+
+		if _, ok := failedSet[opIndex]; ok {
+			result = append(result, payload[actionStart:opEnd]...)
+		}
+
+		opIndex++
+	}
+
+	return result
+}
+
+// countNDJSONOperations counts bulk operations in an ndjson payload.
+func countNDJSONOperations(data []byte) int {
+	count := 0
+	offset := 0
+
+	for offset < len(data) {
+		lineEnd := bytes.IndexByte(data[offset:], '\n')
+		if lineEnd == -1 {
+			break
+		}
+
+		line := data[offset : offset+lineEnd]
+		offset += lineEnd + 1
+		count++
+
+		if !bytes.Contains(line, []byte(`"delete"`)) && offset < len(data) {
+			nextLineEnd := bytes.IndexByte(data[offset:], '\n')
+			if nextLineEnd == -1 {
+				break
+			}
+
+			offset += nextLineEnd + 1
+		}
+	}
+
+	return count
+}
+
+// handleFlushError requeues data after a flush failure.
+func (ib *IndexBuffer) handleFlushError(err error, failedData []byte, batchSize int64, requestCount int) {
+	ib.mu.Lock()
+
+	requeueData, requeueSize, requeueReqs := ib.prepareRequeueData(failedData)
+
+	queuedData := ib.data
+	combined := make([]byte, 0, len(requeueData)+len(queuedData))
+	combined = append(combined, requeueData...)
+	combined = append(combined, queuedData...)
+
+	ib.data = combined
+	ib.size += requeueSize
+	ib.requestsTotal += requeueReqs
+	ib.inFlightData = nil
+	ib.inFlightSize = 0
+	ib.inFlightReqs = 0
+	ib.flushInFlight = false
+	// Keep authHeaders for retry
+	ib.updateBufferMetricLocked()
+	ib.mu.Unlock()
+
+	action := "requeued_batch"
+	if failedData != nil {
+		action = "requeued_partial_failures"
+	}
+
+	ib.logger.ErrorFields("failed to send bulk", map[string]any{
+		"error":     err.Error(),
+		"size":      batchSize,
+		"requests":  requestCount,
+		"indexPath": ib.indexPath,
+		"action":    action,
+	})
+	ib.metrics.BulkFailuresTotal.Inc()
+	ib.metrics.BulkRequeuesTotal.WithLabelValues(ib.indexPath).Inc()
+}
+
+// prepareRequeueData determines what data to requeue based on failure type.
+func (ib *IndexBuffer) prepareRequeueData(failedData []byte) ([]byte, int64, int) {
+	if failedData != nil {
+		// Partial failure — only requeue the failed items
+		return failedData, int64(len(failedData)), countNDJSONOperations(failedData)
+	}
+
+	// Total failure — requeue entire batch
+	return ib.inFlightData, ib.inFlightSize, ib.inFlightReqs
+}
+
+// sendBulkRequest sends a bulk request to Elasticsearch and returns the response body.
+func (ib *IndexBuffer) sendBulkRequest(ctx context.Context, data []byte) ([]byte, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ib.config.Elasticsearch.URL+ib.indexPath, bytes.NewReader(data))
+	if err != nil {
+		return nil, 0, err
+	}
+
+	req.Header.Set("Content-Type", "application/x-ndjson")
+
+	if ib.authHeaders != nil {
+		for key, values := range ib.authHeaders {
+			for _, value := range values {
+				req.Header.Add(key, value)
+			}
+		}
+	}
+
+	resp, err := ib.esClient.Do(req)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+
+	return body, resp.StatusCode, nil
+}
+
+// handlePartialFailure processes partial failures and returns retry payload.
+func (ib *IndexBuffer) handlePartialFailure(currentData []byte, failedIndices []int, attempt int, partialRetry bool) ([]byte, bool, error) {
+	ib.metrics.BulkPartialFailuresTotal.WithLabelValues(ib.indexPath).Add(float64(len(failedIndices)))
+
+	retryPayload := extractFailedPairs(currentData, failedIndices)
+	if len(retryPayload) == 0 {
+		ib.logger.InfoFields("partial failure but could not extract failed items", map[string]any{
+			"failed_items": len(failedIndices),
+			"indexPath":    ib.indexPath,
+		})
+
+		return nil, partialRetry, nil
+	}
+
+	ib.logger.InfoFields("partial bulk failure, retrying failed items", map[string]any{
+		"attempt":             attempt,
+		"failed_items":        len(failedIndices),
+		"retry_payload_bytes": len(retryPayload),
+		"indexPath":           ib.indexPath,
+	})
+
+	return retryPayload, true, fmt.Errorf("partial failure: %d items failed", len(failedIndices))
+}
+
+// determineAttemptType returns the appropriate attempt type based on attempt number and partial retry status.
+func determineAttemptType(attempt int, partialRetry bool) string {
+	if attempt == 0 && !partialRetry {
+		return "first_attempt"
+	}
+
+	return "retry"
+}
+
+// sendWithRetry sends data with exponential backoff retry, handling partial
+// item failures. Returns attempt type, any remaining failed ndjson data
+// (for partial failures), and error. When failedData is non-nil only that
+// subset should be requeued — not the entire original batch.
+func (ib *IndexBuffer) sendWithRetry(data []byte) (string, []byte, error) {
 	var lastErr error
 
 	backoff := ib.config.Retry.BackoffMin
+	currentData := data
+	partialRetry := false
 
 	for attempt := 0; attempt <= ib.config.Retry.Attempts; attempt++ {
 		if attempt > 0 {
@@ -324,40 +561,9 @@ func (ib *IndexBuffer) sendWithRetry(data []byte) (string, error) {
 			})
 		}
 
-		// CRITICAL: Forward to same index path to preserve ES context
 		reqCtx, cancel := context.WithTimeout(context.Background(), esRequestTimeout)
-		req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, ib.config.Elasticsearch.URL+ib.indexPath, bytes.NewReader(data))
-		if err != nil {
-			cancel()
 
-			lastErr = err
-
-			continue
-		}
-
-		req.Header.Set("Content-Type", "application/x-ndjson")
-
-		// Forward authentication headers from the original client request
-		if ib.authHeaders != nil {
-			for key, values := range ib.authHeaders {
-				for _, value := range values {
-					req.Header.Add(key, value)
-				}
-			}
-		}
-
-		resp, err := ib.esClient.Do(req)
-		if err != nil {
-			cancel()
-
-			lastErr = err
-
-			continue
-		}
-
-		body, _ := io.ReadAll(resp.Body)
-
-		err = resp.Body.Close()
+		body, statusCode, err := ib.sendBulkRequest(reqCtx, currentData)
 
 		cancel()
 
@@ -367,18 +573,36 @@ func (ib *IndexBuffer) sendWithRetry(data []byte) (string, error) {
 			continue
 		}
 
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			if attempt == 0 {
-				return "first_attempt", nil
-			}
+		// HTTP-level error — retry the entire current payload
+		if statusCode < 200 || statusCode >= esHTTPErrorThreshold {
+			lastErr = fmt.Errorf("ES returned status %d: %s", statusCode, string(body))
 
-			return "retry", nil
+			continue
 		}
 
-		lastErr = fmt.Errorf("ES returned status %d: %s", resp.StatusCode, string(body))
+		// 2xx — inspect per-item results for partial failures
+		failedIndices := findFailedItemIndices(body)
+		if len(failedIndices) == 0 {
+			return determineAttemptType(attempt, partialRetry), nil, nil
+		}
+
+		// Partial failure: extract only the failed action+document pairs
+		retryPayload, updatedPartialRetry, partialErr := ib.handlePartialFailure(currentData, failedIndices, attempt, partialRetry)
+		if retryPayload == nil {
+			return determineAttemptType(attempt, updatedPartialRetry), nil, nil
+		}
+
+		currentData = retryPayload
+		partialRetry = updatedPartialRetry
+		lastErr = partialErr
 	}
 
-	return "", lastErr
+	// All retries exhausted
+	if partialRetry {
+		return "partial_success", currentData, lastErr
+	}
+
+	return "", nil, lastErr
 }
 
 // Shutdown gracefully shuts down the buffer.
