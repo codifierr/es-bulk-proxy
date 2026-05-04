@@ -21,16 +21,18 @@ docker compose up -d
 ```
 
 This starts:
+
 - **Elasticsearch** on port 9200
 - **ES Proxy** on port 8080
 - **Prometheus** on port 9090
 - **Grafana** on port 3001 (admin/admin)
 
 **Access Services:**
-- Grafana Dashboard: http://localhost:3001/d/es-bulk-proxy-dashboard
-- Prometheus: http://localhost:9090
-- ES Proxy Metrics: http://localhost:8080/metrics
-- Elasticsearch: http://localhost:9200
+
+- Grafana Dashboard: <http://localhost:3001/d/es-bulk-proxy-dashboard>
+- Prometheus: <http://localhost:9090>
+- ES Proxy Metrics: <http://localhost:8080/metrics>
+- Elasticsearch: <http://localhost:9200>
 
 ## Docker Compose
 
@@ -260,6 +262,7 @@ kubectl port-forward svc/es-bulk-proxy 8080:8080
 The included `kubernetes.yaml` provides a production-ready deployment:
 
 **Features:**
+
 - Deployment with 2 replicas
 - ClusterIP Service
 - ConfigMap for configuration
@@ -392,6 +395,7 @@ helm create es-bulk-proxy
 ```
 
 Include in your chart:
+
 - Configurable replicas and resources
 - Optional Ingress configuration
 - Service type options
@@ -431,11 +435,13 @@ kubectl delete -f deployments/kubernetes.yaml
 ### High Availability
 
 1. **Multiple Replicas**: Run at least 2-3 replicas
+
    ```bash
    kubectl scale deployment es-bulk-proxy --replicas=3
    ```
 
 2. **Pod Disruption Budget**: Ensure minimum availability
+
    ```yaml
    apiVersion: policy/v1
    kind: PodDisruptionBudget
@@ -449,6 +455,7 @@ kubectl delete -f deployments/kubernetes.yaml
    ```
 
 3. **Anti-Affinity**: Spread pods across nodes
+
    ```yaml
    affinity:
      podAntiAffinity:
@@ -464,6 +471,7 @@ kubectl delete -f deployments/kubernetes.yaml
 ### Resource Management
 
 1. **Set Resource Requests and Limits**:
+
    ```yaml
    resources:
      requests:
@@ -475,6 +483,7 @@ kubectl delete -f deployments/kubernetes.yaml
    ```
 
 2. **Tune Buffer Sizes**: Match to memory limits
+
    ```bash
    # For 512Mi memory limit
    export MAX_BUFFER_SIZE=104857600  # 100MB
@@ -483,11 +492,13 @@ kubectl delete -f deployments/kubernetes.yaml
 ### Security
 
 1. **Use Non-Root User** (already in Dockerfile):
+
    ```dockerfile
    USER nonroot:nonroot
    ```
 
 2. **Read-Only Root Filesystem**:
+
    ```yaml
    securityContext:
      readOnlyRootFilesystem: true
@@ -495,6 +506,7 @@ kubectl delete -f deployments/kubernetes.yaml
    ```
 
 3. **Network Policies**:
+
    ```yaml
    apiVersion: networking.k8s.io/v1
    kind: NetworkPolicy
@@ -526,6 +538,7 @@ kubectl delete -f deployments/kubernetes.yaml
 ### Monitoring
 
 1. **Prometheus ServiceMonitor**:
+
    ```yaml
    apiVersion: monitoring.coreos.com/v1
    kind: ServiceMonitor
@@ -544,6 +557,7 @@ kubectl delete -f deployments/kubernetes.yaml
 2. **Grafana Dashboard**: Import `deployments/grafana-dashboard.json`
 
 3. **Alerts**: Set up Prometheus alerts
+
    ```yaml
    - alert: ESProxyHighBufferUsage
      expr: es_proxy_buffer_size_bytes > 40000000
@@ -556,6 +570,7 @@ kubectl delete -f deployments/kubernetes.yaml
 
 1. **Kubernetes Service** (default - load balances automatically)
 2. **Ingress** for external access:
+
    ```yaml
    apiVersion: networking.k8s.io/v1
    kind: Ingress
@@ -578,11 +593,13 @@ kubectl delete -f deployments/kubernetes.yaml
 ### Logging
 
 1. **Centralized Logging**: Send logs to aggregator
+
    ```bash
    kubectl logs -l app=es-bulk-proxy -f | fluentd
    ```
 
 2. **Log Level**: Use production mode
+
    ```yaml
    env:
    - name: ENVIRONMENT
