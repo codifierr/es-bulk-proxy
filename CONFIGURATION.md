@@ -178,6 +178,7 @@ curl http://localhost:8080/metrics | grep requests_total | grep 429
 **Cause**: `MAX_BUFFER_SIZE` exceeded
 
 **Solution**:
+
 ```bash
 # Increase buffer size
 export MAX_BUFFER_SIZE=104857600  # 100MB
@@ -191,6 +192,7 @@ export FLUSH_INTERVAL=10s
 **Cause**: Timeouts too short for workload
 
 **Solution**:
+
 ```bash
 # For client-side timeouts
 export SERVER_READ_TIMEOUT=5m
@@ -204,6 +206,7 @@ export ES_REQUEST_TIMEOUT=5m
 **Cause**: Buffer sizes too large or not flushing fast enough
 
 **Solution**:
+
 ```bash
 # Reduce buffer size
 export MAX_BUFFER_SIZE=26214400  # 25MB
@@ -220,6 +223,7 @@ export FLUSH_INTERVAL=10s
 **Cause**: Flushing too frequently or batch size too small
 
 **Solution**:
+
 ```bash
 # Increase flush interval
 export FLUSH_INTERVAL=60s
