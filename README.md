@@ -3,26 +3,18 @@
 [![Go Version](https://img.shields.io/badge/Go-1.26.2+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A production-ready Go service that acts as a transparent Elasticsearch proxy with intelligent bulk request aggregation. Designed to optimize Elasticsearch performance by batching small bulk requests while transparently proxying all other operations.
-
-Built following Go best practices with the [Standard Go Project Layout](https://github.com/golang-standards/project-layout).
+A Go service that acts as a transparent Elasticsearch proxy with intelligent bulk request aggregation. Optimizes Elasticsearch performance by batching small bulk requests while transparently proxying all other operations.
 
 ## ✨ Features
 
-- **Smart Bulk Aggregation**: Automatically aggregates `/_bulk` requests in memory with per-index buffers
-- **Partial Failure Handling**: Detects and retries only failed documents from bulk responses, avoiding duplicates
-- **Client Authentication Forwarding**: Captures and forwards client-specific auth headers (Bearer, Basic, API Keys)
-- **Transparent Proxying**: All non-bulk requests pass through unchanged
-- **Intelligent Request Classification**: Distinguishes between bulk writes, searches, reads, maintenance, and other operations
-- **Time-based Flushing**: Configurable flush intervals (default: 60s)
-- **Size-based Flushing**: Automatic flush on size threshold (default: 5MB)
-- **Backpressure Handling**: Returns HTTP 429 when buffer is full
-- **Retry Logic**: Exponential backoff with granular per-document retry for partial failures
-- **Rich Prometheus Metrics**: Detailed metrics with operation type and HTTP method labels
-- **Structured Logging**: JSON logs using [zerolog](https://github.com/rs/zerolog)
-- **Configuration Management**: Flexible config using [Viper](https://github.com/spf13/viper)
-- **Production Ready**: Health checks, graceful shutdown, resource limits
-- **High Performance**: <5ms overhead for non-bulk requests
+- **Smart Bulk Aggregation** with per-index buffers and automatic time/size-based flushing
+- **Partial Failure Handling** - Retries only failed documents from bulk responses
+- **Client Authentication Forwarding** - Supports Bearer, Basic, and API Key authentication
+- **Transparent Proxying** - Non-bulk requests pass through unchanged
+- **Intelligent Request Classification** - Tracks bulk, search, read, maintenance, write, and delete operations
+- **Rich Prometheus Metrics** - Detailed metrics with operation type and HTTP method labels
+- **Production Ready** - Health checks, graceful shutdown, backpressure handling, exponential retry
+- **High Performance** - <5ms overhead for non-bulk requests
 
 ## 📁 Project Structure
 
@@ -86,623 +78,181 @@ es-bulk-proxy/
 
 ## 🚀 Quick Start
 
-### Prerequisites
-
-- Go 1.26.2 or higher
-- Docker & Docker Compose (for containerized deployment)
-- Elasticsearch instance (for testing)
-- Make (for build automation)
-- pre-commit (optional, for automated code quality checks)
-
-### Option 1: Docker Compose (Recommended)
-
-The fastest way to get started with a complete stack:
+Get started in under 2 minutes with Docker Compose:
 
 ```bash
 cd deployments
 docker compose up -d
 ```
 
-This starts:
+This starts a complete stack:
 
-- Elasticsearch on port 9200
-- ES Proxy on port 8080
-- Prometheus on port 9090
-- Grafana on port 3001 (admin/admin) with pre-configured dashboard
+- **Elasticsearch** (port 9200)
+- **ES Proxy** (port 8080)
+- **Prometheus** (port 9090)  
+- **Grafana** (port 3001, admin/admin) with pre-configured dashboard
 
-**Access the Dashboard:**
+**Access Dashboard:** <http://localhost:3001/d/es-bulk-proxy-dashboard>
 
-- **Grafana Dashboard**: <http://localhost:3001/d/es-bulk-proxy-dashboard>
-- Login with `admin` / `admin`
-
-### Option 2: Build from Source
-
-```bash
-# Clone and navigate
-cd es-bulk-proxy
-
-# Download dependencies
-go mod download
-
-# Build
-make build
-
-# Run with environment variables
-ES_URL=http://localhost:9200 ./es-bulk-proxy
-
-# Or using go run
-make run
-```
-
-### Option 3: Using Docker
-
-```bash
-# Build image
-docker build -t es-bulk-proxy:latest .
-
-# Run container
-docker run -d \
-  -p 8080:8080 \
-  -e ES_URL=http://elasticsearch:9200 \
-  --name es-bulk-proxy \
-  es-bulk-proxy:latest
-```
-
-### Option 4: Using the Published Docker Image
-
-You can run the prebuilt image from Docker Hub directly:
-
-```bash
-docker run -d \
-  -p 8080:8080 \
-  -e ES_URL=http://elasticsearch:9200 \
-  --name es-bulk-proxy \
-  ssingh3339/es-bulk-proxy:latest
-```
-
-If you're running Elasticsearch in Docker Compose or Kubernetes, replace `http://elasticsearch:9200` with the appropriate service URL.
+**Other deployment options:** See [DEPLOYMENT.md](DEPLOYMENT.md) for Docker, Kubernetes, and building from source.
 
 ## ⚙️ Configuration
 
-ES Proxy supports configuration through:
-
-1. **Config file** (YAML) - `configs/config.yaml`
-2. **Environment variables** - Override config file values
-3. **Defaults** - Built-in sensible defaults
-
-### Configuration File
-
-Create a `configs/config.yaml`:
-
-```yaml
-server:
-  port: "8080"
-  
-  # HTTP server timeouts
-  readtimeout: "30s"       # Timeout for reading entire request including body
-  writetimeout: "30s"      # Timeout for writing response
-  idletimeout: "2m"        # Keep-alive timeout
-
-elasticsearch:
-  url: "http://elasticsearch:9200"
-  
-  # Timeout for individual HTTP requests to Elasticsearch
-  # Increase for large bulk payloads or slow ES clusters
-  requesttimeout: "30s"
-
-buffer:
-  flushinterval: "30s"
-  maxbatchsize: 5242880    # 5MB
-  maxbuffersize: 52428800  # 50MB
-
-retry:
-  attempts: 3
-  backoffmin: "100ms"
-```
-
-### Environment Variables
-
-All config values can be overridden with environment variables:
+Configure via environment variables or YAML config file. **Essential settings:**
 
 | Variable | Description | Default |
-| --- | --- | --- |
-| `PORT` | HTTP server port | `8080` |
-| `SERVER_READ_TIMEOUT` | HTTP server read timeout (for large bulk requests, increase this) | `30s` |
-| `SERVER_WRITE_TIMEOUT` | HTTP server write timeout | `30s` |
-| `SERVER_IDLE_TIMEOUT` | HTTP server keep-alive timeout | `2m` |
-| `ES_URL` | Elasticsearch endpoint URL | `http://localhost:9200` |
-| `ES_REQUEST_TIMEOUT` | Timeout for bulk requests to Elasticsearch (increase for large payloads) | `30s` |
+|----------|-------------|---------|
+| `ES_URL` | Elasticsearch endpoint | `http://localhost:9200` |
 | `FLUSH_INTERVAL` | Time-based flush interval | `30s` |
-| `MAX_BATCH_SIZE` | Size threshold for flushing (bytes) | `5242880` (5MB) |
-| `MAX_BUFFER_SIZE` | Maximum buffer size (bytes) | `52428800` (50MB) |
-| `RETRY_ATTEMPTS` | Number of retry attempts | `3` |
-| `RETRY_BACKOFF_MIN` | Minimum backoff duration | `100ms` |
-| `ENVIRONMENT` | Set to `development` for debug logs with pretty console output | (production - INFO level JSON logs) |
+| `MAX_BATCH_SIZE` | Size threshold for flushing | `5242880` (5MB) |
+| `MAX_BUFFER_SIZE` | Maximum buffer size | `52428800` (50MB) |
+| `ENVIRONMENT` | Set to `development` for debug logs | `production` |
 
-### Examples
+**Example:**
 
 ```bash
-# Production with custom settings
 export ES_URL=https://elasticsearch:9200
 export FLUSH_INTERVAL=30s
 export MAX_BATCH_SIZE=10485760
-export ENVIRONMENT=production
-./es-bulk-proxy
-
-# Development mode with pretty console logs
-export ENVIRONMENT=development
 ./es-bulk-proxy
 ```
 
-## 📡 API Endpoints
+**Full configuration reference:** See [CONFIGURATION.md](CONFIGURATION.md) for all settings, timeout tuning, and troubleshooting.
 
-### Proxy Endpoints
+## 📡 API
 
-#### `POST /_bulk`
+### Bulk Aggregation
 
-Bulk write operations (aggregated)
+`POST /_bulk` requests are automatically buffered and batched:
 
 ```bash
 curl -X POST http://localhost:8080/_bulk \
   -H "Content-Type: application/x-ndjson" \
   -d '{"index":{"_index":"myindex"}}
-{"field1":"value1"}
-'
+{"field1":"value1"}'
 ```
 
-Response:
+### Transparent Proxying
 
-```json
-{"errors":false}
-```
-
-#### All Other Requests
-
-All other Elasticsearch APIs are transparently proxied:
+All other Elasticsearch APIs pass through unchanged:
 
 ```bash
-# Search
 curl http://localhost:8080/_search
-
-# Cluster health
 curl http://localhost:8080/_cluster/health
-
-# Index operations
 curl -X PUT http://localhost:8080/myindex
 ```
 
-## 🔐 Authentication Support
+### Authentication
 
-The proxy supports forwarding client authentication to Elasticsearch. All authentication headers from client requests are captured and forwarded with buffered bulk requests.
+The proxy forwards client authentication headers (Bearer tokens, Basic auth, API keys) to Elasticsearch. Auth from the first request in each batch is used when flushing.
 
-### Supported Authentication Methods
-
-1. **Bearer Token Authentication**
-
-```bash
-curl -X POST http://localhost:8080/_bulk \
-  -H "Content-Type: application/x-ndjson" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
-  -d '{"index":{"_index":"myindex"}}
-{"message":"authenticated request"}'
-```
-
-1. **Basic Authentication**
-
-```bash
-curl -X POST http://localhost:8080/_bulk \
-  -H "Content-Type: application/x-ndjson" \
-  -H "Authorization: Basic ZWxhc3RpYzpjaGFuZ2VtZQ==" \
-  -d '{"index":{"_index":"myindex"}}
-{"message":"basic auth request"}'
-```
-
-1. **Elasticsearch API Key**
-
-```bash
-curl -X POST http://localhost:8080/_bulk \
-  -H "Content-Type: application/x-ndjson" \
-  -H "X-Elastic-Api-Key: VnVhQ2ZHY0JDZGJrUW0tZTVoT3k6..." \
-  -d '{"index":{"_index":"myindex"}}
-{"message":"api key request"}'
-```
-
-### How It Works
-
-- **Bulk Requests**: Auth headers from the first request in each batch are captured and forwarded when the buffer flushes
-- **Non-Bulk Requests**: Auth headers are proxied immediately (transparent pass-through)
-- **Per-Batch Authentication**: Each buffer flush uses the authentication from the first request in that batch
-- **Retry Safety**: Authentication headers are preserved during retry attempts
-
-For detailed information, see [AUTHENTICATION.md](AUTHENTICATION.md).
+**Details:** See [AUTHENTICATION.md](AUTHENTICATION.md)
 
 ### Health & Metrics
 
-#### `GET /health`
-
-Health check endpoint
-
-```bash
-curl http://localhost:8080/health
-```
-
-#### `GET /ready`
-
-Readiness check endpoint
-
-```bash
-curl http://localhost:8080/ready
-```
-
-#### `GET /metrics`
-
-Prometheus metrics endpoint
-
-```bash
-curl http://localhost:8080/metrics
-```
-
-**Available Metrics:**
-
-- `es_proxy_requests_total{type, method}` - Total requests by operation type and HTTP method
-  - `type="bulk"` - Bulk write operations (/_bulk endpoints)
-  - `type="search"` - Search queries (POST to /_search, /_count)
-  - `type="read"` - Read operations (GET, HEAD requests)
-  - `type="maintenance"` - Index maintenance (/_refresh, /_flush, /_forcemerge)
-  - `type="write"` - Single document writes
-  - `type="delete"` - Delete operations
-- `es_proxy_bulk_batches_total{attempt_type}` - Number of bulk batches sent (first_attempt, retry, partial_success)
-- `es_proxy_bulk_failures_total` - Number of failed bulk sends
-- `es_proxy_bulk_requeues_total{index_path}` - Number of failed bulk batches requeued for retry
-- `es_proxy_bulk_partial_failures_total{index_path}` - Individual document failures within bulk responses
-- `es_proxy_buffer_size_bytes{index_path}` - Current occupied buffer size in bytes per bulk index path, including in-flight bytes
-- `es_proxy_buffer_in_flight_bytes{index_path}` - Current in-flight buffer size in bytes per bulk index path
-- `es_proxy_buffer_in_flight_requests{index_path}` - Current in-flight request count per bulk index path
-- `es_proxy_latency_seconds{type, method}` - Request latency histogram by operation type and method
+- `GET /health` - Health check
+- `GET /ready` - Readiness check  
+- `GET /metrics` - Prometheus metrics
 
 ## 🎯 Use with Zenarmor
 
-To use this proxy with Zenarmor:
+Replace your Elasticsearch URL with the proxy:
 
-1. **Deploy ES Proxy** alongside your Elasticsearch cluster
-2. **Configure Zenarmor** to use the proxy URL:
+```
+Instead of: http://elasticsearch:9200
+Use:        http://es-bulk-proxy:8080
+```
 
-   ```
-   Instead of: http://elasticsearch:9200
-   Use:        http://es-bulk-proxy:8080
-   ```
+**Expected improvements:**
 
-3. **Monitor Performance** via `/metrics` endpoint
-4. **Tune Settings** based on your traffic patterns
-
-### Expected Improvements
-
-- **Reduced Load**: 80-90% fewer requests to Elasticsearch
-- **Better Throughput**: Larger batches = better compression & indexing
-- **Lower Latency**: Fewer round trips to ES cluster
-- **Index-Aware Buffering**: Separate buffers per index maintain context and prevent cross-index conflicts
-- **Cost Savings**: Reduced CPU/memory on ES nodes
+- 80-90% fewer requests to Elasticsearch
+- Better throughput via larger batches
+- Lower latency (fewer round trips)
+- Reduced CPU/memory on ES nodes
 
 ## 🔧 Development
 
-### Project Layout
-
-Following the [Standard Go Project Layout](https://github.com/golang-standards/project-layout):
-
-- `/cmd` - Main applications for this project
-- `/internal` - Private application and library code (not importable by external projects)
-  - `/internal/buffer` - Bulk buffer aggregation logic
-  - `/internal/config` - Configuration management
-  - `/internal/handler` - HTTP handlers and routing
-  - `/internal/logger` - Structured logging
-  - `/internal/metrics` - Prometheus metrics
-- `/configs` - Configuration file templates or default configs
-- `/deployments` - Deployment configurations (Docker, Kubernetes, Grafana)
-- `/scripts` - Build, test, and utility scripts
-
-### Code Quality
-
-This project uses:
-
-- **golangci-lint** - Comprehensive linting with 40+ linters enabled
-- **pre-commit hooks** - Automated checks before commits
-- **gofmt** - Code formatting with simplifications
-- **go vet** - Static analysis
-
-Install pre-commit hooks:
+### Quick Commands
 
 ```bash
-make precommit-install
+make dev              # Start full dev environment
+make build            # Build binary
+make test             # Run tests
+make lint             # Run linters
+make format           # Format code
+make integration-test # Run integration tests (Docker required)
 ```
 
-Run all quality checks:
+### Project Structure
 
-```bash
-make lint
-```
+Follows [Standard Go Project Layout](https://github.com/golang-standards/project-layout):
 
-### Build Commands
+- `/cmd` - Application entry points
+- `/internal` - Private application code (buffer, config, handler, logger, metrics)
+- `/configs` - Configuration files
+- `/deployments` - Docker, Kubernetes, monitoring configs
 
-```bash
-# Show all available commands
-make help
+**Code Quality:** golangci-lint, pre-commit hooks, gofmt, go vet
 
-# Download dependencies
-make deps
+## Monitoring
 
-# Install pre-commit hooks
-make precommit-install
-
-# Format code
-make format
-
-# Run go vet
-make vet
-
-# Build binary
-make build
-
-# Run locally
-make run
-
-# Run tests
-make test
-
-# Run linters (includes pre-commit hooks)
-make lint
-
-# Run all checks and build
-make all
-
-# Build Docker image
-make docker-build
-
-# Start full dev environment
-make dev
-```
-
-### Running Tests
-
-```bash
-# Run unit tests
-make test
-
-# Run integration tests (requires Docker)
-make integration-test
-
-# Run benchmarks
-make bench
-
-# Generate test traffic for dashboard
-make test-traffic
-```
-
-## 🐳 Deployment
-
-### Docker Compose
-
-```bash
-cd deployments
-docker compose up -d
-
-# View logs
-docker compose logs -f es-bulk-proxy
-
-# Stop
-docker compose down
-```
-
-### Kubernetes
-
-```bash
-# Deploy
-kubectl apply -f deployments/kubernetes.yaml
-
-# Check status
-kubectl get pods -l app=es-bulk-proxy
-kubectl get svc es-bulk-proxy
-
-# View logs
-kubectl logs -l app=es-bulk-proxy -f
-
-# Port forward for testing
-kubectl port-forward svc/es-bulk-proxy 8080:8080
-
-# Scale
-kubectl scale deployment es-bulk-proxy --replicas=5
-
-# Delete
-kubectl delete -f deployments/kubernetes.yaml
-```
-
-The Kubernetes deployment includes:
-
-- Deployment with 2 replicas
-- ClusterIP Service
-- Horizontal Pod Autoscaler (2-10 pods)
-- ConfigMap for configuration
-- ServiceMonitor for Prometheus Operator
-- PodDisruptionBudget for high availability
-
-## 📊 Monitoring
-
-### Grafana Dashboard
-
-A pre-configured Grafana dashboard is included for comprehensive monitoring:
-
-**Access:** <http://localhost:3001/d/es-bulk-proxy-dashboard> (admin/admin)
-
-**Dashboard Features:**
-
-- 📈 Real-time request rate by type and HTTP method (bulk, search, read, maintenance)
-- 📊 Buffer size gauge with thresholds
-- 🎯 Success rate and failure tracking
-- ⏱️ Latency percentiles (p50, p95, p99) per operation type
-- 📉 Bulk batch rate and trends
-- 🥧 Request type distribution with method breakdown
-
-**Quick Setup:**
-
-```bash
-# Dashboard is auto-provisioned with docker compose
-cd deployments && docker compose up -d
-
-# Generate test traffic
-chmod +x generate-test-traffic.sh
-./generate-test-traffic.sh
-```
-
-See [GRAFANA_DASHBOARD.md](deployments/GRAFANA_DASHBOARD.md) for detailed documentation.
-
-### Prometheus
-
-The service exposes Prometheus metrics at `/metrics`. Key metrics to monitor:
+### Key Metrics
 
 ```promql
 # Request rate by type
-rate(es_proxy_requests_total[5m])
-
-# Bulk write rate specifically
 rate(es_proxy_requests_total{type="bulk"}[5m])
 
-# Search query rate
-rate(es_proxy_requests_total{type="search"}[5m])
-
-# Bulk batch rate
-rate(es_proxy_bulk_batches_total[5m])
+# Buffer usage
+es_proxy_buffer_size_bytes
 
 # Error rate
 rate(es_proxy_bulk_failures_total[5m])
 
-# Requeue rate
-rate(es_proxy_bulk_requeues_total[5m])
-
-# Partial document failure rate
-rate(es_proxy_bulk_partial_failures_total[5m])
-
-# Total buffer size
-sum(es_proxy_buffer_size_bytes)
-
-# In-flight buffer bytes
-sum(es_proxy_buffer_in_flight_bytes)
-
-# Latency by operation type
+# Latency by operation
 histogram_quantile(0.95, rate(es_proxy_latency_seconds_bucket[5m]))
 ```
 
-### Grafana
+### Grafana Dashboard
 
-Import the provided dashboard or create custom dashboards using the metrics above.
+Pre-configured dashboard with 11 panels covering all key metrics:
 
-**Pre-configured Dashboard:**
+- Request rates by type and method
+- Buffer size with thresholds
+- Success/failure tracking
+- Latency percentiles (p50, p95, p99)
+- Request distribution
 
-- Located at: `deployments/grafana-dashboard.json`
-- Auto-provisioned when using docker compose
-- Access: <http://localhost:3001/d/es-bulk-proxy-dashboard>
-- Includes 11 panels covering all key metrics
+**Import:** `deployments/grafana-dashboard.json` or access at <http://localhost:3001/d/es-bulk-proxy-dashboard>
 
-**Manual Import:**
-
-1. Login to Grafana (admin/admin)
-2. Go to Dashboards → Import
-3. Upload `deployments/grafana-dashboard.json`
-4. Select Prometheus datasource
+**Details:** See [GRAFANA_DASHBOARD.md](deployments/GRAFANA_DASHBOARD.md)
 
 ## 🐛 Troubleshooting
 
-### HTTP 429 - Too Many Requests
+| Issue | Quick Fix |
+|-------|-----------|
+| HTTP 429 | Increase `MAX_BUFFER_SIZE` or decrease `FLUSH_INTERVAL` |
+| Timeout errors | Increase `SERVER_READ_TIMEOUT` and `ES_REQUEST_TIMEOUT` |
+| High latency | Decrease `MAX_BATCH_SIZE` or `FLUSH_INTERVAL` |
+| Failed bulk sends | Check ES connectivity and logs |
 
-**Cause**: Buffer is full (exceeded MAX_BUFFER_SIZE)
-
-**Solutions**:
-
-```bash
-# Increase buffer size
-export MAX_BUFFER_SIZE=104857600  # 100MB
-
-# Decrease flush interval
-export FLUSH_INTERVAL=1s
-
-# Scale horizontally
-kubectl scale deployment es-bulk-proxy --replicas=5
-```
-
-### Context Deadline Exceeded / I/O Timeouts
-
-**Cause**: Request timeouts too short for large bulk operations or slow connections
-
-**Solutions**:
-
-```bash
-# Increase server read timeout (for slow clients sending large payloads)
-export SERVER_READ_TIMEOUT=5m
-
-# Increase ES request timeout (for slow Elasticsearch responses)
-export ES_REQUEST_TIMEOUT=2m
-
-# Or in config.yaml
-server:
-  readtimeout: "5m"
-elasticsearch:
-  requesttimeout: "2m"
-```
-
-### High Latency
-
-**Cause**: Large batches or slow Elasticsearch
-
-**Solutions**:
-
-```bash
-# Decrease batch size
-export MAX_BATCH_SIZE=2621440  # 2.5MB
-
-# Decrease flush interval
-export FLUSH_INTERVAL=1s
-```
-
-### Failed Bulk Sends
-
-**Cause**: Elasticsearch unreachable or rejecting requests
-
-**Solutions**:
-
-```bash
-# Check metrics
-curl http://localhost:8080/metrics | grep bulk_failures
-
-# View logs
-docker logs es-bulk-proxy 2>&1 | grep "failed to send bulk"
-
-# Test ES connectivity
-curl http://localhost:9200/_cluster/health
-```
+**Full guide:** [CONFIGURATION.md](CONFIGURATION.md)
 
 ## 📈 Performance
 
-### Benchmarks
+**Benchmarks** (4-core CPU, 8GB RAM): 1000+ req/sec, <5ms overhead, ~100MB memory, <200m CPU
 
-Tested on 4-core CPU, 8GB RAM:
-
-- **Throughput**: 1000+ bulk requests/sec
-- **Latency**: <5ms overhead for proxy requests
-- **Memory**: ~100MB under normal load
-- **CPU**: <200m under normal load
-
-### Tuning Tips
-
-1. **Flush Interval**: Lower for faster writes, higher for better batching
-2. **Batch Size**: Larger batches = better compression, but higher latency
-3. **Scale Horizontally**: Use HPA for high-traffic scenarios
-4. **Monitor Metrics**: Watch `buffer_size_bytes` for tuning
+**Tuning:** Lower flush interval = faster writes | Larger batches = better compression | Scale horizontally for high traffic
 
 ## 🛠️ Technology Stack
 
-- **Language**: Go 1.25+
-- **Logging**: [zerolog](https://github.com/rs/zerolog) - High-performance structured logging
-- **Configuration**: [Viper](https://github.com/spf13/viper) - Flexible configuration management
-- **Metrics**: [Prometheus](https://github.com/prometheus/client_golang) - Production monitoring
-- **HTTP**: Go standard library - Reverse proxy and HTTP server
+Go 1.25+ • [zerolog](https://github.com/rs/zerolog) • [Viper](https://github.com/spf13/viper) • [Prometheus](https://github.com/prometheus/client_golang) • Go stdlib
+
+## 📚 Documentation
+
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Docker, Kubernetes, source builds
+- [CONFIGURATION.md](CONFIGURATION.md) - Full config reference & tuning guide
+- [AUTHENTICATION.md](AUTHENTICATION.md) - Auth forwarding details
+- [GRAFANA_DASHBOARD.md](deployments/GRAFANA_DASHBOARD.md) - Dashboard guide
 
 ## 📝 License
 
