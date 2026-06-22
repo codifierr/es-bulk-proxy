@@ -50,6 +50,10 @@ func TestNew(t *testing.T) {
 	if m.ProxyLatency == nil {
 		t.Error("ProxyLatency not initialized")
 	}
+
+	if m.DroppedBatchesTotal == nil {
+		t.Error("DroppedBatchesTotal not initialized")
+	}
 }
 
 func TestMetrics_RequestsTotal(t *testing.T) {
@@ -148,6 +152,25 @@ func TestMetrics_BulkFailuresTotal(t *testing.T) {
 	count := testutil.ToFloat64(m.BulkFailuresTotal)
 	if count != 1 {
 		t.Errorf("BulkFailuresTotal = %f, want 1", count)
+	}
+}
+
+func TestMetrics_DroppedBatchesTotal(t *testing.T) {
+	m := globalMetrics
+
+	const indexPath = "/dropped-metric-test/_bulk"
+
+	// Initial value should be 0 for an unused label.
+	initial := testutil.ToFloat64(m.DroppedBatchesTotal.WithLabelValues(indexPath))
+	if initial != 0 {
+		t.Errorf("DroppedBatchesTotal initial value = %f, want 0", initial)
+	}
+
+	m.DroppedBatchesTotal.WithLabelValues(indexPath).Inc()
+
+	count := testutil.ToFloat64(m.DroppedBatchesTotal.WithLabelValues(indexPath))
+	if count != 1 {
+		t.Errorf("DroppedBatchesTotal = %f, want 1", count)
 	}
 }
 
@@ -342,6 +365,11 @@ func TestMetrics_MetricNames(t *testing.T) {
 			name:       "BulkRequeuesTotal",
 			metricFunc: func() prometheus.Collector { return m.BulkRequeuesTotal.WithLabelValues("/_bulk") },
 			wantName:   "es_proxy_bulk_requeues_total",
+		},
+		{
+			name:       "DroppedBatchesTotal",
+			metricFunc: func() prometheus.Collector { return m.DroppedBatchesTotal.WithLabelValues("/_bulk") },
+			wantName:   "es_proxy_dropped_batches_total",
 		},
 		{
 			name:       "BufferSizeBytes",

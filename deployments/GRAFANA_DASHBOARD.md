@@ -117,6 +117,7 @@ Default is last 15 minutes. Use the time picker (top right) to adjust.
    - `es_proxy_bulk_batches_total`
    - `es_proxy_bulk_failures_total`
    - `es_proxy_bulk_requeues_total{index_path}`
+   - `es_proxy_dropped_batches_total{index_path}`
    - `es_proxy_buffer_size_bytes{index_path}`
    - `es_proxy_buffer_in_flight_bytes{index_path}`
    - `es_proxy_buffer_in_flight_requests{index_path}`
@@ -205,6 +206,12 @@ rate(es_proxy_bulk_failures_total[1m])
 rate(es_proxy_bulk_requeues_total[1m])
 ```
 
+**Dropped batch rate (malformed payloads discarded after an Elasticsearch HTTP 400):**
+
+```promql
+rate(es_proxy_dropped_batches_total[1m])
+```
+
 **Average latency:**
 
 ```promql
@@ -253,7 +260,11 @@ Create alerts for critical metrics:
    - Metric: `rate(es_proxy_bulk_requeues_total[5m])`
    - Condition: > 0 for 5 minutes
 
-4. **High Latency:**
+4. **Dropped Batches (data loss):**
+   - Metric: `rate(es_proxy_dropped_batches_total[5m])`
+   - Condition: > 0 (Elasticsearch rejected a malformed payload with HTTP 400; the batch was discarded)
+
+5. **High Latency:**
    - Metric: `histogram_quantile(0.99, rate(es_proxy_latency_seconds_bucket[1m]))`
    - Condition: > 0.1 (100ms)
 

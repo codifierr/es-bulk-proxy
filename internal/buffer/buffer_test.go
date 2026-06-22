@@ -1,6 +1,7 @@
 package buffer
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"github.com/codifierr/es-bulk-proxy/internal/config"
 	"github.com/codifierr/es-bulk-proxy/internal/logger"
 	"github.com/codifierr/es-bulk-proxy/internal/metrics"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 // Use a shared metrics instance to avoid Prometheus registration conflicts
@@ -278,9 +280,14 @@ func TestIndexBuffer_Add(t *testing.T) {
 
 func TestIndexBuffer_FlushOnSizeThreshold(t *testing.T) {
 	// Create a test server
-	flushed := false
+	var (
+		mu      sync.Mutex
+		flushed bool
+	)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		flushed = true
+		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"errors":false}`))
 	}))
@@ -326,16 +333,24 @@ func TestIndexBuffer_FlushOnSizeThreshold(t *testing.T) {
 	// Wait for async flush
 	time.Sleep(500 * time.Millisecond)
 
-	if !flushed {
+	mu.Lock()
+	didFlush := flushed
+	mu.Unlock()
+	if !didFlush {
 		t.Error("Buffer should have been flushed due to size threshold")
 	}
 }
 
 func TestIndexBuffer_TimedFlush(t *testing.T) {
 	// Create a test server
-	flushed := false
+	var (
+		mu      sync.Mutex
+		flushed bool
+	)
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		flushed = true
+		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"errors":false}`))
 	}))
@@ -380,7 +395,10 @@ func TestIndexBuffer_TimedFlush(t *testing.T) {
 	// Wait for timed flush
 	time.Sleep(500 * time.Millisecond)
 
-	if !flushed {
+	mu.Lock()
+	didFlush := flushed
+	mu.Unlock()
+	if !didFlush {
 		t.Error("Buffer should have been flushed due to time threshold")
 	}
 }
@@ -672,12 +690,17 @@ func TestIndexBuffer_EmptyFlush(t *testing.T) {
 
 func TestIndexBuffer_ForwardsAuthenticationHeaders(t *testing.T) {
 	// Track received headers
-	var receivedAuth string
-	var receivedApiKey string
+	var (
+		mu             sync.Mutex
+		receivedAuth   string
+		receivedApiKey string
+	)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		receivedAuth = r.Header.Get("Authorization")
 		receivedApiKey = r.Header.Get("X-Elastic-Api-Key")
+		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"errors":false}`))
 	}))
@@ -729,11 +752,14 @@ func TestIndexBuffer_ForwardsAuthenticationHeaders(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Verify headers were forwarded
-	if receivedAuth != "Bearer test-token-123" {
-		t.Errorf("Authorization header not forwarded correctly. Got: %s, Want: Bearer test-token-123", receivedAuth)
+	mu.Lock()
+	gotAuth, gotApiKey := receivedAuth, receivedApiKey
+	mu.Unlock()
+	if gotAuth != "Bearer test-token-123" {
+		t.Errorf("Authorization header not forwarded correctly. Got: %s, Want: Bearer test-token-123", gotAuth)
 	}
-	if receivedApiKey != "api-key-456" {
-		t.Errorf("X-Elastic-Api-Key header not forwarded correctly. Got: %s, Want: api-key-456", receivedApiKey)
+	if gotApiKey != "api-key-456" {
+		t.Errorf("X-Elastic-Api-Key header not forwarded correctly. Got: %s, Want: api-key-456", gotApiKey)
 	}
 }
 
@@ -803,16 +829,21 @@ func TestIndexBuffer_UsesFirstRequestAuthHeaders(t *testing.T) {
 }
 
 func TestIndexBuffer_ClearsAuthHeadersAfterSuccessfulFlush(t *testing.T) {
-	callCount := 0
-	var firstAuth, secondAuth string
+	var (
+		mu                    sync.Mutex
+		callCount             int
+		firstAuth, secondAuth string
+	)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		callCount++
 		if callCount == 1 {
 			firstAuth = r.Header.Get("Authorization")
 		} else if callCount == 2 {
 			secondAuth = r.Header.Get("Authorization")
 		}
+		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"errors":false}`))
 	}))
@@ -859,11 +890,14 @@ func TestIndexBuffer_ClearsAuthHeadersAfterSuccessfulFlush(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	// Each batch should use its own auth
-	if firstAuth != "Bearer token1" {
-		t.Errorf("First flush should use token1. Got: %s", firstAuth)
+	mu.Lock()
+	gotFirst, gotSecond := firstAuth, secondAuth
+	mu.Unlock()
+	if gotFirst != "Bearer token1" {
+		t.Errorf("First flush should use token1. Got: %s", gotFirst)
 	}
-	if secondAuth != "Bearer token2" {
-		t.Errorf("Second flush should use token2. Got: %s", secondAuth)
+	if gotSecond != "Bearer token2" {
+		t.Errorf("Second flush should use token2. Got: %s", gotSecond)
 	}
 }
 
@@ -930,10 +964,15 @@ func TestIndexBuffer_SendWithRetry_PreservesAuthOnRetry(t *testing.T) {
 }
 
 func TestBufferManager_Add_WithAuthentication(t *testing.T) {
-	var receivedAuth string
+	var (
+		mu           sync.Mutex
+		receivedAuth string
+	)
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		receivedAuth = r.Header.Get("Authorization")
+		mu.Unlock()
 		// Read and discard body
 		_, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusOK)
@@ -972,8 +1011,11 @@ func TestBufferManager_Add_WithAuthentication(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	// Verify auth was forwarded
-	if receivedAuth != "Basic dXNlcjpwYXNz" {
-		t.Errorf("Auth header not forwarded. Got: %s, Want: Basic dXNlcjpwYXNz", receivedAuth)
+	mu.Lock()
+	got := receivedAuth
+	mu.Unlock()
+	if got != "Basic dXNlcjpwYXNz" {
+		t.Errorf("Auth header not forwarded. Got: %s, Want: Basic dXNlcjpwYXNz", got)
 	}
 }
 
@@ -1166,5 +1208,172 @@ func TestIndexBuffer_SendWithRetry_PartialFailureExhausted(t *testing.T) {
 	}
 	if string(failedData) != string(data) {
 		t.Errorf("failedData should contain the failed item:\ngot:  %q\nwant: %q", string(failedData), string(data))
+	}
+}
+
+func TestIsDeleteAction(t *testing.T) {
+	tests := []struct {
+		name       string
+		line       string
+		wantDelete bool
+	}{
+		{"delete action", `{"delete":{"_id":"1"}}`, true},
+		{"delete with leading space", `  {"delete":{"_id":"1"}}`, true},
+		{"index action", `{"index":{"_id":"1"}}`, false},
+		{"create action", `{"create":{"_id":"1"}}`, false},
+		{"update action", `{"update":{"_id":"1"}}`, false},
+		{"index name contains delete", `{"index":{"_index":"my_delete_index"}}`, false},
+		{"document with delete field", `{"action":"delete","v":1}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := isDeleteAction([]byte(tt.line)); got != tt.wantDelete {
+				t.Errorf("isDeleteAction(%q) = %v, want %v", tt.line, got, tt.wantDelete)
+			}
+		})
+	}
+}
+
+func TestExtractFailedPairs_DeleteSubstringInIndexName(t *testing.T) {
+	// An index whose name contains "delete" must not be misclassified as a
+	// delete op; its document line must still be consumed so later operations
+	// stay aligned.
+	payload := []byte(
+		"{\"index\":{\"_index\":\"zenarmor_conn_delete_write\",\"_id\":\"1\"}}\n{\"proto\":\"UDP\"}\n" +
+			"{\"index\":{\"_index\":\"zenarmor_conn_delete_write\",\"_id\":\"2\"}}\n{\"proto\":\"TCP\"}\n",
+	)
+
+	got := extractFailedPairs(payload, []int{1})
+	want := "{\"index\":{\"_index\":\"zenarmor_conn_delete_write\",\"_id\":\"2\"}}\n{\"proto\":\"TCP\"}\n"
+
+	if string(got) != want {
+		t.Errorf("extractFailedPairs misaligned on delete-substring index:\ngot:  %q\nwant: %q", string(got), want)
+	}
+}
+
+func TestExtractFailedPairs_MisalignedReturnsNil(t *testing.T) {
+	// A payload that begins in the middle of a document (no leading action
+	// object) is structurally broken; extraction must refuse to emit a
+	// head-chopped fragment.
+	payload := []byte("\"proto\":\"UDP\",\"port\":53}\n{\"index\":{\"_id\":\"2\"}}\n{\"v\":2}\n")
+
+	if got := extractFailedPairs(payload, []int{0}); got != nil {
+		t.Errorf("expected nil for misaligned payload, got %q", string(got))
+	}
+}
+
+func TestPayloadSample(t *testing.T) {
+	short := []byte("short payload")
+	if got := payloadSample(short); got != "short payload" {
+		t.Errorf("payloadSample(short) = %q, want unchanged", got)
+	}
+
+	long := make([]byte, payloadSampleBytes+50)
+	got := payloadSample(long)
+	const marker = "...(truncated)"
+	if len(got) != payloadSampleBytes+len(marker) {
+		t.Errorf("payloadSample(long) length = %d, want %d", len(got), payloadSampleBytes+len(marker))
+	}
+	if got[len(got)-len(marker):] != marker {
+		t.Errorf("payloadSample(long) should end with %q, got %q", marker, got)
+	}
+}
+
+func TestIndexBuffer_SendWithRetry_BadRequestPermanent(t *testing.T) {
+	attemptCount := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attemptCount++
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"type":"x_content_parse_exception"},"status":400}`))
+	}))
+	defer ts.Close()
+
+	cfg := &config.Config{
+		Elasticsearch: config.ElasticsearchConfig{URL: ts.URL, RequestTimeout: 30 * time.Second},
+		Retry:         config.RetryConfig{Attempts: 3, BackoffMin: 10 * time.Millisecond},
+	}
+	buf := &IndexBuffer{
+		indexPath: "/_bulk",
+		config:    cfg,
+		logger:    logger.New(nil, true),
+		metrics:   testMetrics,
+		esClient:  newESHTTPClient(),
+	}
+
+	data := []byte("{\"index\":{\"_id\":\"1\"}}\n{\"v\":1}\n")
+
+	attemptType, failedData, err := buf.sendWithRetry(data)
+	if err == nil {
+		t.Fatal("expected error for HTTP 400")
+	}
+	if !errors.Is(err, errBulkRejected) {
+		t.Errorf("expected errBulkRejected, got %v", err)
+	}
+	if attemptType != "" {
+		t.Errorf("expected empty attempt_type, got %q", attemptType)
+	}
+	if failedData != nil {
+		t.Errorf("expected nil failedData, got %q", string(failedData))
+	}
+	// A 400 must NOT be retried — identical bytes always fail.
+	if attemptCount != 1 {
+		t.Errorf("expected exactly 1 attempt (no retries) for HTTP 400, got %d", attemptCount)
+	}
+}
+
+func TestIndexBuffer_FlushDropsBadRequestBatch(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"malformed","status":400}`))
+	}))
+	defer ts.Close()
+
+	const indexPath = "/drop-test/_bulk"
+
+	cfg := &config.Config{
+		Elasticsearch: config.ElasticsearchConfig{URL: ts.URL, RequestTimeout: 30 * time.Second},
+		Buffer: config.BufferConfig{
+			FlushInterval: 10 * time.Second,
+			MaxBatchSize:  1024,
+			MaxBufferSize: 2048,
+		},
+		Retry: config.RetryConfig{Attempts: 3, BackoffMin: 10 * time.Millisecond},
+	}
+
+	batch := []byte("{\"index\":{\"_id\":\"1\"}}\n{\"v\":1}\n")
+	buf := &IndexBuffer{
+		indexPath: indexPath,
+		data:      append([]byte(nil), batch...),
+		size:      int64(len(batch)),
+		config:    cfg,
+		logger:    logger.New(nil, true),
+		metrics:   testMetrics,
+		esClient:  newESHTTPClient(),
+		lastFlush: time.Now(),
+	}
+
+	before := testutil.ToFloat64(testMetrics.DroppedBatchesTotal.WithLabelValues(indexPath))
+
+	buf.flush()
+
+	buf.mu.Lock()
+	defer buf.mu.Unlock()
+
+	if buf.flushInFlight {
+		t.Fatal("flush should not remain in-flight after a dropped batch")
+	}
+	if buf.size != 0 {
+		t.Fatalf("size = %d, want 0 (poison batch must be dropped, not requeued)", buf.size)
+	}
+	if len(buf.data) != 0 {
+		t.Fatalf("data = %q, want empty (poison batch must be dropped, not requeued)", string(buf.data))
+	}
+	if buf.inFlightSize != 0 {
+		t.Fatalf("inFlightSize = %d, want 0", buf.inFlightSize)
+	}
+
+	after := testutil.ToFloat64(testMetrics.DroppedBatchesTotal.WithLabelValues(indexPath))
+	if after != before+1 {
+		t.Errorf("DroppedBatchesTotal = %f, want %f", after, before+1)
 	}
 }
