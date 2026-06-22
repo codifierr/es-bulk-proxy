@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -26,7 +27,23 @@ const (
 	esExpectContinueTimeout = 1 * time.Second
 	initialBufferCapacity   = 1024 * 1024
 	esHTTPErrorThreshold    = 300
+	payloadSampleBytes      = 256
 )
+
+// Structured-log field keys, declared once so the same key text is not repeated
+// across log call sites (also satisfies the goconst linter).
+const (
+	logFieldIndexPath = "indexPath"
+	logFieldSize      = "size"
+	logFieldRequests  = "requests"
+)
+
+// errBulkRejected marks a bulk send that Elasticsearch rejected with a
+// permanent client error (HTTP 400). Such a payload is malformed and will be
+// rejected again on every retry, so it must be dropped rather than requeued —
+// requeuing it forever would fill the buffer and block all new data
+// (head-of-line blocking / poison pill).
+var errBulkRejected = errors.New("elasticsearch rejected bulk payload as malformed (HTTP 400)")
 
 // BufferManager manages multiple index-specific buffers.
 type BufferManager struct {
@@ -123,7 +140,7 @@ func (bm *BufferManager) getOrCreateBuffer(indexPath string) *IndexBuffer {
 
 	bm.buffers[indexPath] = buf
 	bm.logger.InfoFields("created new buffer", map[string]any{
-		"indexPath": indexPath,
+		logFieldIndexPath: indexPath,
 	})
 
 	return buf
@@ -185,10 +202,10 @@ func (ib *IndexBuffer) Add(data []byte, headers http.Header) error {
 	// Flush if batch size exceeded
 	if ib.size >= ib.config.Buffer.MaxBatchSize {
 		ib.logger.DebugFields("flushing buffer", map[string]any{
-			"reason":    "size_threshold",
-			"size":      ib.size,
-			"requests":  ib.requestsTotal,
-			"indexPath": ib.indexPath,
+			"reason":          "size_threshold",
+			logFieldSize:      ib.size,
+			logFieldRequests:  ib.requestsTotal,
+			logFieldIndexPath: ib.indexPath,
 		})
 
 		go ib.flush()
@@ -202,10 +219,10 @@ func (ib *IndexBuffer) timedFlush() {
 	ib.mu.Lock()
 	if ib.size > 0 {
 		ib.logger.DebugFields("flushing buffer", map[string]any{
-			"reason":    "time_threshold",
-			"size":      ib.size,
-			"requests":  ib.requestsTotal,
-			"indexPath": ib.indexPath,
+			"reason":          "time_threshold",
+			logFieldSize:      ib.size,
+			logFieldRequests:  ib.requestsTotal,
+			logFieldIndexPath: ib.indexPath,
 		})
 
 		go ib.flush()
@@ -248,7 +265,13 @@ func (ib *IndexBuffer) flush() {
 	// Send with retry (handles partial item failures internally)
 	attemptType, failedData, err := ib.sendWithRetry(dataToSend)
 	if err != nil {
-		ib.handleFlushError(err, failedData, batchSize, requestCount)
+		if errors.Is(err, errBulkRejected) {
+			// Permanent rejection: drop the poison batch instead of requeuing
+			// it forever, which would fill the buffer and block all new data.
+			ib.handlePermanentFailure(err, dataToSend, batchSize, requestCount)
+		} else {
+			ib.handleFlushError(err, failedData, batchSize, requestCount)
+		}
 	} else {
 		shouldFlushAgain := false
 
@@ -264,10 +287,10 @@ func (ib *IndexBuffer) flush() {
 		ib.mu.Unlock()
 
 		ib.logger.DebugFields("bulk sent successfully", map[string]any{
-			"size":         batchSize,
-			"requests":     requestCount,
-			"indexPath":    ib.indexPath,
-			"attempt_type": attemptType,
+			logFieldSize:      batchSize,
+			logFieldRequests:  requestCount,
+			logFieldIndexPath: ib.indexPath,
+			"attempt_type":    attemptType,
 		})
 		ib.metrics.BulkBatchesTotal.WithLabelValues(attemptType).Inc()
 		ib.metrics.FlushDuration.WithLabelValues(ib.indexPath).Observe(time.Since(flushStart).Seconds())
@@ -342,6 +365,33 @@ func findFailedItemIndices(body []byte) []int {
 	return failed
 }
 
+// isDeleteAction reports whether an ndjson bulk action line is a delete
+// operation. Delete actions occupy a single line (no document body follows);
+// every other action is followed by a document line. The first JSON key is
+// matched precisely so that an index or document id containing the substring
+// "delete" cannot be misclassified — a misclassification would shift every
+// following action/document pair and corrupt the extracted payload.
+func isDeleteAction(actionLine []byte) bool {
+	return bytes.HasPrefix(bytes.TrimLeft(actionLine, " \t"), []byte(`{"delete"`))
+}
+
+// opSpanEnd returns the offset just past the end of a bulk operation whose
+// action line ends at afterAction. Delete operations have no document line; all
+// others consume the following document line (or the rest of the payload when
+// it is unterminated).
+func opSpanEnd(payload []byte, afterAction int, isDelete bool) int {
+	if isDelete || afterAction >= len(payload) {
+		return afterAction
+	}
+
+	docLineEnd := bytes.IndexByte(payload[afterAction:], '\n')
+	if docLineEnd == -1 {
+		return len(payload)
+	}
+
+	return afterAction + docLineEnd + 1
+}
+
 // extractFailedPairs streams through an ndjson bulk payload and returns only
 // the action+document line pairs at the specified operation indices.
 // Delete operations are single-line; all others are two-line (action + doc).
@@ -372,20 +422,18 @@ func extractFailedPairs(payload []byte, failedIndices []int) []byte {
 		actionLine := payload[offset : offset+lineEnd]
 		offset += lineEnd + 1
 
-		isDelete := bytes.Contains(actionLine, []byte(`"delete"`))
-
-		opEnd := offset
-
-		if !isDelete && offset < len(payload) {
-			docLineEnd := bytes.IndexByte(payload[offset:], '\n')
-			if docLineEnd == -1 {
-				opEnd = len(payload)
-			} else {
-				opEnd = offset + docLineEnd + 1
-			}
-
-			offset = opEnd
+		// Defensive: a well-formed bulk action line is a JSON object. Landing on
+		// a line that is not an action object means the payload is
+		// misaligned/corrupt; bail out rather than emit a fragment that starts in
+		// the middle of a document.
+		if !bytes.HasPrefix(bytes.TrimLeft(actionLine, " \t"), []byte("{")) {
+			return nil
 		}
+
+		isDelete := isDeleteAction(actionLine)
+
+		opEnd := opSpanEnd(payload, offset, isDelete)
+		offset = opEnd
 
 		if _, ok := failedSet[opIndex]; ok {
 			result = append(result, payload[actionStart:opEnd]...)
@@ -412,7 +460,7 @@ func countNDJSONOperations(data []byte) int {
 		offset += lineEnd + 1
 		count++
 
-		if !bytes.Contains(line, []byte(`"delete"`)) && offset < len(data) {
+		if !isDeleteAction(line) && offset < len(data) {
 			nextLineEnd := bytes.IndexByte(data[offset:], '\n')
 			if nextLineEnd == -1 {
 				break
@@ -453,14 +501,57 @@ func (ib *IndexBuffer) handleFlushError(err error, failedData []byte, batchSize 
 	}
 
 	ib.logger.ErrorFields("failed to send bulk", map[string]any{
-		"error":     err.Error(),
-		"size":      batchSize,
-		"requests":  requestCount,
-		"indexPath": ib.indexPath,
-		"action":    action,
+		"error":           err.Error(),
+		logFieldSize:      batchSize,
+		logFieldRequests:  requestCount,
+		logFieldIndexPath: ib.indexPath,
+		"action":          action,
 	})
 	ib.metrics.BulkFailuresTotal.Inc()
 	ib.metrics.BulkRequeuesTotal.WithLabelValues(ib.indexPath).Inc()
+}
+
+// handlePermanentFailure drops a batch that Elasticsearch rejected with a
+// permanent client error (HTTP 400). The payload is malformed and can never be
+// indexed, so it is discarded — not requeued — to keep the poison batch from
+// filling the buffer and blocking all subsequent data. The dropped batch is
+// logged with a short sample and counted so the data loss stays observable.
+func (ib *IndexBuffer) handlePermanentFailure(err error, droppedData []byte, batchSize int64, requestCount int) {
+	ib.mu.Lock()
+	ib.inFlightData = nil
+	ib.inFlightSize = 0
+	ib.inFlightReqs = 0
+	ib.flushInFlight = false
+	ib.authHeaders = nil
+	ib.updateBufferMetricLocked()
+	shouldFlushAgain := ib.size >= ib.config.Buffer.MaxBatchSize
+	ib.mu.Unlock()
+
+	ib.logger.ErrorFields("dropping malformed bulk batch rejected by Elasticsearch", map[string]any{
+		"error":           err.Error(),
+		logFieldSize:      batchSize,
+		logFieldRequests:  requestCount,
+		logFieldIndexPath: ib.indexPath,
+		"action":          "dropped_batch",
+		"sample":          payloadSample(droppedData),
+	})
+	ib.metrics.DroppedBatchesTotal.WithLabelValues(ib.indexPath).Inc()
+	ib.metrics.BulkFailuresTotal.Inc()
+
+	if shouldFlushAgain {
+		go ib.flush()
+	}
+}
+
+// payloadSample returns a short printable prefix of a bulk payload for
+// diagnostics, so a malformed batch can be identified from logs without
+// emitting the entire (potentially large) payload.
+func payloadSample(data []byte) string {
+	if len(data) <= payloadSampleBytes {
+		return string(data)
+	}
+
+	return string(data[:payloadSampleBytes]) + "...(truncated)"
 }
 
 // prepareRequeueData determines what data to requeue based on failure type.
@@ -509,8 +600,8 @@ func (ib *IndexBuffer) handlePartialFailure(currentData []byte, failedIndices []
 	retryPayload := extractFailedPairs(currentData, failedIndices)
 	if len(retryPayload) == 0 {
 		ib.logger.InfoFields("partial failure but could not extract failed items", map[string]any{
-			"failed_items": len(failedIndices),
-			"indexPath":    ib.indexPath,
+			"failed_items":    len(failedIndices),
+			logFieldIndexPath: ib.indexPath,
 		})
 
 		return nil, partialRetry, nil
@@ -520,7 +611,7 @@ func (ib *IndexBuffer) handlePartialFailure(currentData []byte, failedIndices []
 		"attempt":             attempt,
 		"failed_items":        len(failedIndices),
 		"retry_payload_bytes": len(retryPayload),
-		"indexPath":           ib.indexPath,
+		logFieldIndexPath:     ib.indexPath,
 	})
 
 	return retryPayload, true, fmt.Errorf("partial failure: %d items failed", len(failedIndices))
@@ -553,9 +644,9 @@ func (ib *IndexBuffer) sendWithRetry(data []byte) (string, []byte, error) {
 
 			ib.metrics.BulkRetriesTotal.WithLabelValues(ib.indexPath).Inc()
 			ib.logger.InfoFields("retrying bulk send", map[string]any{
-				"attempt":   attempt,
-				"backoff":   backoff.String(),
-				"indexPath": ib.indexPath,
+				"attempt":         attempt,
+				"backoff":         backoff.String(),
+				logFieldIndexPath: ib.indexPath,
 			})
 		}
 
@@ -571,8 +662,16 @@ func (ib *IndexBuffer) sendWithRetry(data []byte) (string, []byte, error) {
 			continue
 		}
 
-		// HTTP-level error — retry the entire current payload
+		// HTTP-level error
 		if statusCode < 200 || statusCode >= esHTTPErrorThreshold {
+			// A 400 means Elasticsearch could not parse the payload. Retrying
+			// the identical bytes will always fail, so stop immediately and mark
+			// the failure as permanent so the caller drops the batch instead of
+			// requeuing it forever (which would fill the buffer with poison).
+			if statusCode == http.StatusBadRequest {
+				return "", nil, fmt.Errorf("%w: %s", errBulkRejected, string(body))
+			}
+
 			lastErr = fmt.Errorf("ES returned status %d: %s", statusCode, string(body))
 
 			continue
