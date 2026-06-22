@@ -208,6 +208,9 @@ es_proxy_buffer_size_bytes
 # Error rate
 rate(es_proxy_bulk_failures_total[5m])
 
+# Dropped (malformed) batches — data discarded after an Elasticsearch HTTP 400
+rate(es_proxy_dropped_batches_total[5m])
+
 # Latency by operation
 histogram_quantile(0.95, rate(es_proxy_latency_seconds_bucket[5m]))
 ```
@@ -230,10 +233,11 @@ Pre-configured dashboard with 11 panels covering all key metrics:
 
 | Issue | Quick Fix |
 |-------|-----------|
-| HTTP 429 | Increase `MAX_BUFFER_SIZE` or decrease `FLUSH_INTERVAL` |
+| HTTP 429 / `buffer full` | Increase `MAX_BUFFER_SIZE` or decrease `FLUSH_INTERVAL`; check Elasticsearch is reachable so the buffer can drain |
 | Timeout errors | Increase `SERVER_READ_TIMEOUT` and `ES_REQUEST_TIMEOUT` |
 | High latency | Decrease `MAX_BATCH_SIZE` or `FLUSH_INTERVAL` |
 | Failed bulk sends | Check ES connectivity and logs |
+| Dropped batches (`es_proxy_dropped_batches_total` > 0) | Elasticsearch rejected the payload as malformed (HTTP 400). The batch is discarded — not requeued — so one poison payload can't fill the buffer and block all writes. Find the offending source via the `sample` field of the `dropped_batch` error log |
 
 **Full guide:** [CONFIGURATION.md](CONFIGURATION.md)
 
